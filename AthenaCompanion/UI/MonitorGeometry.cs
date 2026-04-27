@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Media;
+using Point = System.Windows.Point;
 using WinForms = System.Windows.Forms;
 
 namespace AthenaCompanion.UI;
