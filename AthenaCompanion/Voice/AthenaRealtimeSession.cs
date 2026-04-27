@@ -2,6 +2,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Channels;
+using AthenaCompanion.Tools;
 
 namespace AthenaCompanion.Voice;
 
@@ -11,6 +12,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
     private readonly string _apiKey;
     private readonly string _instructions;
     private readonly string _voice;
+    private readonly AthenaToolExecutor _toolExecutor;
     private readonly AthenaAudioInput _audioInput = new();
     private readonly AthenaAudioOutput _audioOutput = new();
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -20,13 +22,17 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
     private Channel<byte[]>? _audioChannel;
     private Task? _receiveTask;
     private Task? _sendAudioTask;
+    private readonly HashSet<string> _handledToolCallIds = [];
+    private volatile bool _audioInputSuspended;
+    private bool _isSpeaking;
     private bool _started;
 
-    public AthenaRealtimeSession(string apiKey, string instructions, string voice)
+    public AthenaRealtimeSession(string apiKey, string instructions, string voice, AthenaToolExecutor toolExecutor)
     {
         _apiKey = apiKey;
         _instructions = instructions;
         _voice = voice;
+        _toolExecutor = toolExecutor;
         _audioInput.AudioAvailable += OnAudioAvailable;
     }
 
@@ -49,6 +55,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         });
 
         _socket = new ClientWebSocket();
+        _socket.Options.KeepAliveInterval = TimeSpan.FromSeconds(15);
         _socket.Options.SetRequestHeader("Authorization", $"Bearer {_apiKey}");
 
         var uri = new Uri($"wss://api.openai.com/v1/realtime?model={Model}");
@@ -141,13 +148,57 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                 {
                     voice = _voice
                 }
-            }
+            },
+            tools = CreateTools(),
+            tool_choice = "auto"
         }
     };
 
+    private static object[] CreateTools() =>
+    [
+        new
+        {
+            type = "function",
+            name = "inspect_screen",
+            description = "Capture the user's current primary screen and answer a concise question about what is visible. Use only after the user explicitly asks about their screen.",
+            parameters = new
+            {
+                type = "object",
+                properties = new
+                {
+                    question = new
+                    {
+                        type = "string",
+                        description = "The user's screen-related question."
+                    }
+                },
+                required = new[] { "question" }
+            }
+        },
+        new
+        {
+            type = "function",
+            name = "create_screen_image",
+            description = "Capture the user's current primary screen, summarize it, generate an image such as an infographic with gpt-image-2, and open it in a lightbox. Use only after explicit user request.",
+            parameters = new
+            {
+                type = "object",
+                properties = new
+                {
+                    prompt = new
+                    {
+                        type = "string",
+                        description = "The user's requested generated-image instruction."
+                    }
+                },
+                required = new[] { "prompt" }
+            }
+        }
+    ];
+
     private void OnAudioAvailable(object? sender, byte[] audio)
     {
-        if (!_started || _audioChannel is null)
+        if (!_started || _audioInputSuspended || _audioChannel is null)
         {
             return;
         }
@@ -176,6 +227,10 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         catch (OperationCanceledException)
         {
         }
+        catch (WebSocketException ex) when (IsRemoteCloseException(ex))
+        {
+            HandleRemoteDisconnect();
+        }
         catch (Exception ex)
         {
             Error?.Invoke(this, $"Microphone streaming failed: {ex.Message}");
@@ -199,6 +254,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                     result = await _socket.ReceiveAsync(buffer, cancellationToken);
                     if (result.MessageType == WebSocketMessageType.Close)
                     {
+                        HandleRemoteDisconnect();
                         return;
                     }
 
@@ -206,11 +262,15 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                 }
                 while (!result.EndOfMessage);
 
-                HandleServerEvent(builder.ToString());
+                await HandleServerEventAsync(builder.ToString(), cancellationToken);
             }
         }
         catch (OperationCanceledException)
         {
+        }
+        catch (WebSocketException ex) when (IsRemoteCloseException(ex))
+        {
+            HandleRemoteDisconnect();
         }
         catch (Exception ex)
         {
@@ -218,7 +278,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         }
     }
 
-    private void HandleServerEvent(string json)
+    private async Task HandleServerEventAsync(string json, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -236,26 +296,157 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                 break;
             case "input_audio_buffer.speech_started":
                 _audioOutput.Clear();
+                _isSpeaking = false;
                 StatusChanged?.Invoke(this, "Listening");
                 break;
             case "input_audio_buffer.speech_stopped":
+                _isSpeaking = false;
                 StatusChanged?.Invoke(this, "Thinking");
                 break;
             case "response.created":
+                _isSpeaking = false;
+                StatusChanged?.Invoke(this, "Thinking");
+                break;
             case "response.output_item.added":
-                StatusChanged?.Invoke(this, "Speaking");
+                _isSpeaking = false;
+                StatusChanged?.Invoke(this, IsFunctionCallEvent(root) ? "Using tool" : "Thinking");
+                break;
+            case "response.output_item.done":
+                if (TryReadFunctionCallFromItemEvent(root, out var itemCall))
+                {
+                    await HandleFunctionCallAsync(itemCall, cancellationToken);
+                }
+
+                break;
+            case "response.function_call_arguments.done":
+                if (TryReadFunctionCallFromProperties(root, out var argumentsCall))
+                {
+                    await HandleFunctionCallAsync(argumentsCall, cancellationToken);
+                }
+
                 break;
             case "response.output_audio.delta":
             case "response.audio.delta":
+                if (!_isSpeaking)
+                {
+                    _isSpeaking = true;
+                    StatusChanged?.Invoke(this, "Speaking");
+                }
+
                 AddAudioDelta(root);
                 break;
             case "response.done":
+                _isSpeaking = false;
                 StatusChanged?.Invoke(this, "Listening");
                 break;
             case "error":
                 Error?.Invoke(this, ReadError(root));
                 break;
         }
+    }
+
+    private async Task HandleFunctionCallAsync(FunctionCall call, CancellationToken cancellationToken)
+    {
+        if (!_handledToolCallIds.Add(call.CallId))
+        {
+            return;
+        }
+
+        StatusChanged?.Invoke(this, "Using tool");
+        _audioInputSuspended = true;
+        string output;
+        try
+        {
+            output = await _toolExecutor.ExecuteAsync(call.Name, call.Arguments, cancellationToken);
+        }
+        finally
+        {
+            _audioInputSuspended = false;
+        }
+
+        await SendJsonAsync(new
+        {
+            type = "conversation.item.create",
+            item = new
+            {
+                type = "function_call_output",
+                call_id = call.CallId,
+                output
+            }
+        }, cancellationToken);
+
+        StatusChanged?.Invoke(this, "Thinking");
+        await SendJsonAsync(new
+        {
+            type = "response.create",
+            response = new
+            {
+                instructions = "Speak the tool result naturally and briefly as Athena."
+            }
+        }, cancellationToken);
+    }
+
+    private void HandleRemoteDisconnect()
+    {
+        if (!_started)
+        {
+            return;
+        }
+
+        _audioInputSuspended = true;
+        _audioChannel?.Writer.TryComplete();
+        _cts?.Cancel();
+        StatusChanged?.Invoke(this, "Disconnected");
+    }
+
+    private static bool IsRemoteCloseException(WebSocketException ex) =>
+        ex.WebSocketErrorCode is WebSocketError.ConnectionClosedPrematurely or WebSocketError.InvalidState ||
+        ex.Message.Contains("remote party closed", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsFunctionCallEvent(JsonElement root) =>
+        root.TryGetProperty("item", out var item) &&
+        item.TryGetProperty("type", out var type) &&
+        string.Equals(type.GetString(), "function_call", StringComparison.Ordinal);
+
+    private static bool TryReadFunctionCallFromItemEvent(JsonElement root, out FunctionCall call)
+    {
+        call = default!;
+        if (!root.TryGetProperty("item", out var item) ||
+            !item.TryGetProperty("type", out var type) ||
+            !string.Equals(type.GetString(), "function_call", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return TryReadFunctionCallFromProperties(item, out call);
+    }
+
+    private static bool TryReadFunctionCallFromProperties(JsonElement element, out FunctionCall call)
+    {
+        call = default!;
+        if (!element.TryGetProperty("call_id", out var callIdElement) ||
+            !element.TryGetProperty("name", out var nameElement))
+        {
+            return false;
+        }
+
+        var callId = callIdElement.GetString();
+        var name = nameElement.GetString();
+        if (string.IsNullOrWhiteSpace(callId) || string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        var arguments = "{}";
+        if (element.TryGetProperty("arguments", out var argumentsElement))
+        {
+            arguments = argumentsElement.ValueKind == JsonValueKind.String
+                ? argumentsElement.GetString() ?? "{}"
+                : argumentsElement.GetRawText();
+        }
+
+        call = new FunctionCall(callId, name, arguments);
+        return true;
     }
 
     private void AddAudioDelta(JsonElement root)
@@ -305,4 +496,6 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
             _sendLock.Release();
         }
     }
+
+    private sealed record FunctionCall(string CallId, string Name, string Arguments);
 }

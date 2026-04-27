@@ -18,6 +18,13 @@ Voice behavior:
 - first voice use asks for an API key if neither Credential Manager nor `OPENAI_API_KEY` has one
 - default voice is `alloy`; selected voice is saved under the user's AppData settings
 
+Pause-only voice tools:
+
+- screen questions such as "what's on my screen?" capture the primary display and ask `gpt-5.5` for a concise spoken answer
+- image requests such as "generate an infographic of what I am seeing" capture the primary display, prepare an image brief with `gpt-5.5`, generate a PNG with `gpt-image-2`, and open it in Athena's lightbox
+- generated screen images are saved under the user's `Pictures\Athena Companion` folder
+- screen capture is only triggered by an explicit voice tool request while Athena is paused
+
 ## Run
 
 ```powershell

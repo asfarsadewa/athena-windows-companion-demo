@@ -1,6 +1,6 @@
 # Athena Voice Agent Plan
 
-Status: first local implementation in progress. Athena has pause-only voice mode, local key setup, microphone streaming, and response playback. Further tuning is still expected after live testing.
+Status: first local implementation in progress. Athena has pause-only voice mode, local key setup, microphone streaming, response playback, screen inspection, and screen-based image generation. Further tuning is still expected after live testing.
 
 ## Product Rules
 
@@ -10,6 +10,7 @@ Status: first local implementation in progress. Athena has pause-only voice mode
 - Never log, echo, commit, or include the key in crash reports.
 - Local development may fall back to the `OPENAI_API_KEY` environment variable.
 - Voice is optional. If no key is configured, Athena still walks and poses normally.
+- Screen capture is optional and tool-triggered. Athena should only capture the primary screen after the user explicitly asks about the screen or asks for an image based on the screen.
 
 ## Voice Activation Model
 
@@ -29,8 +30,13 @@ Athena only listens while she is paused.
   - Stop microphone capture immediately.
   - Cancel or close any active response.
   - Close the Realtime session.
+- Screen tools:
+  - Available only inside pause-mode voice sessions.
+  - `inspect_screen` captures the primary display and asks a vision-capable text model for a concise answer.
+  - `create_screen_image` captures the primary display, prepares an image brief, generates a PNG, and opens it in a local lightbox.
+  - Generated images are saved to the user's `Pictures\Athena Companion` folder.
 
-This keeps the privacy boundary simple: pause means "Athena may listen"; walking means "Athena is not listening."
+This keeps the privacy boundary simple: pause means "Athena may listen"; walking means "Athena is not listening." Screen capture requires a separate explicit screen or image-generation request.
 
 ## OpenAI API Direction
 
@@ -40,6 +46,10 @@ Initial implementation should use the OpenAI Realtime API over WebSocket from th
 - Endpoint shape: `wss://api.openai.com/v1/realtime?model=gpt-realtime-1.5`
 - Default voice: `alloy`
 - Built-in voices exposed in the tray menu: `marin`, `cedar`, `coral`, `shimmer`, `verse`, `sage`, `alloy`, `ash`, `ballad`, `echo`
+- Tool routing:
+  - Realtime function tools: `inspect_screen`, `create_screen_image`
+  - Screen understanding: `gpt-5.5` through the Responses API with a screenshot input
+  - Screen image generation: `gpt-image-2` through the Image API
 - Auth source:
   1. Windows Credential Manager
   2. `OPENAI_API_KEY` environment variable for local development
@@ -90,6 +100,13 @@ AthenaCompanion/
   Settings/
     ApiKeySetupWindow.xaml
     ApiKeySetupWindow.xaml.cs
+  Tools/
+    AthenaToolExecutor.cs
+    OpenAiToolClient.cs
+    ScreenCaptureService.cs
+  UI/
+    ImageLightboxWindow.xaml
+    ImageLightboxWindow.xaml.cs
 ```
 
 Responsibilities:
@@ -101,6 +118,10 @@ Responsibilities:
 - `WindowsCredentialOpenAiKeyStore`: reads, writes, and deletes the user's API key from Windows Credential Manager.
 - `ApiKeySetupWindow`: collects and validates the user's key without persisting it until validation succeeds.
 - `AthenaSettings`: stores non-secret user preferences such as selected voice under AppData.
+- `AthenaToolExecutor`: executes local screen tools requested by the Realtime model.
+- `OpenAiToolClient`: calls Responses for screen inspection and the Image API for generated screen images.
+- `ScreenCaptureService`: captures the primary display as PNG bytes.
+- `ImageLightboxWindow`: displays generated images and offers copy/open-folder actions.
 
 ## Implementation Phases
 
@@ -132,16 +153,22 @@ Responsibilities:
    - Cancel playback if the user resumes walking.
    - Later: add a speaking animation overlay or pose variant.
 
-6. **Conversation behavior** - next
+6. **Screen tool routing** - done
+   - Add Realtime function declarations for screen inspection and screen image creation.
+   - Execute local screen capture only when a function call arrives.
+   - Send function results back to Realtime and ask Athena to speak the result.
+   - Open generated images in a WPF lightbox.
+
+7. **Conversation behavior** - next
    - Tune turn detection and interruption handling.
    - Add Bahasa Indonesia and mixed-language test phrases.
    - Add short persona samples for greeting, unclear audio, and goodbye.
 
-7. **Distribution hardening** - later
+8. **Distribution hardening** - later
    - Add explicit setup copy explaining that users pay OpenAI directly for their own key usage.
    - Add remove-key flow.
-   - Add "voice disabled" fallback when no key or microphone permission exists.
-   - Add a privacy note: Athena only captures microphone audio while paused.
+   - Add "voice disabled" fallback when no key, microphone permission, or screen-capture permission exists.
+   - Add a privacy note: Athena only captures microphone audio while paused, and only captures screen pixels after explicit screen-related requests.
 
 ## Test Plan
 
@@ -156,6 +183,8 @@ Responsibilities:
 - Bahasa Indonesia input receives Bahasa Indonesia output.
 - Mixed Indonesian-English input can be mirrored naturally.
 - Network failure shows a non-blocking status and does not crash the app.
+- "What's on my screen?" triggers `inspect_screen` and receives a spoken answer.
+- "Generate an infographic of my screen" triggers `create_screen_image`, opens the lightbox, and saves a PNG under `Pictures\Athena Companion`.
 
 ## Later Ideas
 

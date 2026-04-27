@@ -5,8 +5,8 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Athena Companion"
-        Width="176"
-        Height="156"
+        Width="190"
+        Height="176"
         AllowsTransparency="True"
         Background="Transparent"
         Focusable="False"
@@ -22,6 +22,32 @@
           Background="Transparent"
           SnapsToDevicePixels="True"
           UseLayoutRounding="True">
+        <Border x:Name="VoiceBusyIndicator"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Margin="0,4,0,0"
+                Padding="8,3"
+                Background="#E8201D2B"
+                BorderBrush="#A8D9CCFF"
+                BorderThickness="1"
+                CornerRadius="8"
+                IsHitTestVisible="False"
+                Visibility="Collapsed">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock x:Name="VoiceBusyText"
+                           Foreground="#F7F1FF"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Text="Thinking" />
+                <TextBlock x:Name="VoiceBusyDots"
+                           Width="16"
+                           Foreground="#F7F1FF"
+                           FontSize="11"
+                           FontWeight="SemiBold"
+                           Text="..." />
+            </StackPanel>
+        </Border>
+
         <Image x:Name="SpriteImage"
                Width="160"
                Height="144"

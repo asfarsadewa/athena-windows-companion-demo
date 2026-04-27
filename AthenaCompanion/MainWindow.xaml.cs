@@ -3,6 +3,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using AthenaCompanion.Settings;
+using AthenaCompanion.UI;
 using AthenaCompanion.Voice;
 using Microsoft.Win32;
 using System.Windows;
@@ -50,10 +51,11 @@ public partial class MainWindow : Window
     private bool _movementPaused;
     private bool _clickThrough;
     private string _voiceStatus = "Voice off";
+    private string _busyIndicatorLabel = "Thinking";
 
     public MainWindow()
     {
-        _voiceController = new AthenaVoiceController(() => _settings.Voice);
+        _voiceController = new AthenaVoiceController(() => _settings.Voice, ShowGeneratedImage);
         InitializeComponent();
 
         _timer.Tick += OnTick;
@@ -130,6 +132,7 @@ public partial class MainWindow : Window
         SpriteImage.RenderTransform = _direction < 0
             ? new ScaleTransform(-1, 1)
             : Transform.Identity;
+        UpdateBusyIndicatorAnimation(now);
     }
 
     private void UpdateMovement(double now, double dt)
@@ -383,6 +386,7 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             _voiceStatus = status;
+            UpdateBusyIndicatorState(status);
             UpdateMenuState();
         });
     }
@@ -392,9 +396,55 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             _voiceStatus = "Voice error";
+            UpdateBusyIndicatorState(_voiceStatus);
             UpdateMenuState();
             _notifyIcon?.ShowBalloonTip(4000, "Athena Voice", error, WinForms.ToolTipIcon.Warning);
         });
+    }
+
+    private void ShowGeneratedImage(string imagePath)
+    {
+        var lightbox = new ImageLightboxWindow(imagePath)
+        {
+            Owner = this
+        };
+
+        lightbox.Show();
+        lightbox.Activate();
+    }
+
+    private void UpdateBusyIndicatorState(string status)
+    {
+        _busyIndicatorLabel = status switch
+        {
+            "Connecting..." => "Connecting",
+            "Thinking" => "Thinking",
+            "Using tool" => "Thinking",
+            "Looking at screen" => "Looking",
+            "Creating image" => "Drawing",
+            _ => string.Empty
+        };
+
+        if (string.IsNullOrWhiteSpace(_busyIndicatorLabel))
+        {
+            VoiceBusyIndicator.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        VoiceBusyText.Text = _busyIndicatorLabel;
+        VoiceBusyIndicator.Visibility = Visibility.Visible;
+    }
+
+    private void UpdateBusyIndicatorAnimation(double now)
+    {
+        if (VoiceBusyIndicator.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        var dotCount = (int)(now * 2.6) % 4;
+        VoiceBusyDots.Text = new string('.', dotCount).PadRight(3);
+        VoiceBusyIndicator.Opacity = 0.82 + Math.Sin(now * 5.0) * 0.12;
     }
 
     private static string ToTitleCase(string value) =>
