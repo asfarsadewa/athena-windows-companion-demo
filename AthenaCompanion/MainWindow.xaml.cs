@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using AthenaCompanion.Settings;
 using AthenaCompanion.Voice;
 using Microsoft.Win32;
 using System.Windows;
@@ -26,12 +27,14 @@ public partial class MainWindow : Window
     private readonly Stopwatch _clock = new();
     private readonly Random _random = new();
     private readonly SpriteAtlas _atlas = SpriteAtlas.Load();
-    private readonly AthenaVoiceController _voiceController = new();
+    private readonly AthenaSettings _settings = AthenaSettings.Load();
+    private readonly AthenaVoiceController _voiceController;
 
     private WinForms.NotifyIcon? _notifyIcon;
     private WinForms.ToolStripMenuItem? _pauseMenuItem;
     private WinForms.ToolStripMenuItem? _clickThroughMenuItem;
     private WinForms.ToolStripMenuItem? _voiceStatusMenuItem;
+    private WinForms.ToolStripMenuItem? _voiceMenuItem;
     private WinForms.ToolStripMenuItem? _removeApiKeyMenuItem;
 
     private BehaviorMode _mode = BehaviorMode.Walk;
@@ -50,6 +53,7 @@ public partial class MainWindow : Window
 
     public MainWindow()
     {
+        _voiceController = new AthenaVoiceController(() => _settings.Voice);
         InitializeComponent();
 
         _timer.Tick += OnTick;
@@ -225,6 +229,7 @@ public partial class MainWindow : Window
         _clickThroughMenuItem.Click += (_, _) => ToggleClickThrough();
 
         _voiceStatusMenuItem = new WinForms.ToolStripMenuItem("Voice off") { Enabled = false };
+        _voiceMenuItem = BuildVoiceMenu();
 
         var configureApiKeyMenuItem = new WinForms.ToolStripMenuItem("OpenAI API Key...");
         configureApiKeyMenuItem.Click += (_, _) =>
@@ -248,6 +253,7 @@ public partial class MainWindow : Window
         menu.Items.Add(_clickThroughMenuItem);
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add(_voiceStatusMenuItem);
+        menu.Items.Add(_voiceMenuItem);
         menu.Items.Add(configureApiKeyMenuItem);
         menu.Items.Add(_removeApiKeyMenuItem);
         menu.Items.Add(new WinForms.ToolStripSeparator());
@@ -289,6 +295,43 @@ public partial class MainWindow : Window
         UpdateMenuState();
     }
 
+    private WinForms.ToolStripMenuItem BuildVoiceMenu()
+    {
+        var menu = new WinForms.ToolStripMenuItem("Voice");
+        foreach (var voice in RealtimeVoiceOptions.BuiltIn)
+        {
+            var item = new WinForms.ToolStripMenuItem(ToTitleCase(voice))
+            {
+                Tag = voice,
+                CheckOnClick = false
+            };
+            item.Click += (_, _) => ChangeVoice(voice);
+            menu.DropDownItems.Add(item);
+        }
+
+        return menu;
+    }
+
+    private async void ChangeVoice(string voice)
+    {
+        if (!RealtimeVoiceOptions.IsSupported(voice) ||
+            string.Equals(_settings.Voice, voice, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _settings.Voice = voice;
+        _settings.Save();
+
+        if (_movementPaused)
+        {
+            await _voiceController.StopAsync();
+            await _voiceController.StartAsync(this);
+        }
+
+        UpdateMenuState();
+    }
+
     private void UpdateMenuState()
     {
         if (_pauseMenuItem is not null)
@@ -305,12 +348,23 @@ public partial class MainWindow : Window
         if (_voiceStatusMenuItem is not null)
         {
             var keyStatus = _voiceController.GetKeyStatus();
-            _voiceStatusMenuItem.Text = $"Voice: {_voiceStatus} ({keyStatus})";
+            _voiceStatusMenuItem.Text = $"Voice: {_voiceStatus}, {_settings.Voice} ({keyStatus})";
         }
 
         if (_removeApiKeyMenuItem is not null)
         {
             _removeApiKeyMenuItem.Enabled = _voiceController.GetKeyStatus() == "Credential Manager";
+        }
+
+        if (_voiceMenuItem is not null)
+        {
+            foreach (WinForms.ToolStripItem item in _voiceMenuItem.DropDownItems)
+            {
+                if (item is WinForms.ToolStripMenuItem voiceItem && voiceItem.Tag is string voice)
+                {
+                    voiceItem.Checked = string.Equals(voice, _settings.Voice, StringComparison.OrdinalIgnoreCase);
+                }
+            }
         }
     }
 
@@ -342,6 +396,11 @@ public partial class MainWindow : Window
             _notifyIcon?.ShowBalloonTip(4000, "Athena Voice", error, WinForms.ToolTipIcon.Warning);
         });
     }
+
+    private static string ToTitleCase(string value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? value
+            : char.ToUpperInvariant(value[0]) + value[1..];
 
     private void ApplyClickThroughStyle(bool enabled)
     {

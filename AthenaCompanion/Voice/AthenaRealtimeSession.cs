@@ -10,6 +10,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
     private const string Model = "gpt-realtime-1.5";
     private readonly string _apiKey;
     private readonly string _instructions;
+    private readonly string _voice;
     private readonly AthenaAudioInput _audioInput = new();
     private readonly AthenaAudioOutput _audioOutput = new();
     private readonly SemaphoreSlim _sendLock = new(1, 1);
@@ -21,10 +22,11 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
     private Task? _sendAudioTask;
     private bool _started;
 
-    public AthenaRealtimeSession(string apiKey, string instructions)
+    public AthenaRealtimeSession(string apiKey, string instructions, string voice)
     {
         _apiKey = apiKey;
         _instructions = instructions;
+        _voice = voice;
         _audioInput.AudioAvailable += OnAudioAvailable;
     }
 
@@ -137,7 +139,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                 },
                 output = new
                 {
-                    voice = "marin"
+                    voice = _voice
                 }
             }
         }

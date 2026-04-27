@@ -22,6 +22,7 @@ Athena only listens while she is paused.
 - Pause mode:
   - Left-click or tray pause toggles Athena into pause pose.
   - If voice is enabled and a valid key exists, connect the Realtime session.
+  - Use the selected Realtime voice from user settings.
   - Start microphone capture only after the session is ready.
   - Play Athena's spoken responses through the default audio output.
 - Resume walking:
@@ -37,6 +38,8 @@ Initial implementation should use the OpenAI Realtime API over WebSocket from th
 
 - Model: `gpt-realtime-1.5`
 - Endpoint shape: `wss://api.openai.com/v1/realtime?model=gpt-realtime-1.5`
+- Default voice: `alloy`
+- Built-in voices exposed in the tray menu: `marin`, `cedar`, `coral`, `shimmer`, `verse`, `sage`, `alloy`, `ash`, `ballad`, `echo`
 - Auth source:
   1. Windows Credential Manager
   2. `OPENAI_API_KEY` environment variable for local development
@@ -97,6 +100,7 @@ Responsibilities:
 - `AthenaAudioOutput`: buffers and plays model audio responses.
 - `WindowsCredentialOpenAiKeyStore`: reads, writes, and deletes the user's API key from Windows Credential Manager.
 - `ApiKeySetupWindow`: collects and validates the user's key without persisting it until validation succeeds.
+- `AthenaSettings`: stores non-secret user preferences such as selected voice under AppData.
 
 ## Implementation Phases
 

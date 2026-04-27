@@ -7,8 +7,14 @@ namespace AthenaCompanion.Voice;
 internal sealed class AthenaVoiceController : IAsyncDisposable
 {
     private readonly OpenAiKeyProvider _keyProvider = new();
+    private readonly Func<string> _getVoice;
     private AthenaRealtimeSession? _session;
     private bool _starting;
+
+    public AthenaVoiceController(Func<string> getVoice)
+    {
+        _getVoice = getVoice;
+    }
 
     public event EventHandler<string>? StatusChanged;
     public event EventHandler<string>? Error;
@@ -38,7 +44,7 @@ internal sealed class AthenaVoiceController : IAsyncDisposable
                 return;
             }
 
-            var session = new AthenaRealtimeSession(apiKey, AthenaVoicePrompt.Text);
+            var session = new AthenaRealtimeSession(apiKey, AthenaVoicePrompt.Text, _getVoice());
             session.StatusChanged += OnSessionStatusChanged;
             session.Error += OnSessionError;
 

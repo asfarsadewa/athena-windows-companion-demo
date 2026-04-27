@@ -14,8 +14,9 @@ Voice behavior:
 
 - left-click Athena to pause and start voice mode
 - left-click again to resume walking and stop voice mode
-- right-click for the menu, including voice status and API key setup
+- right-click for the menu, including voice status, voice selection, and API key setup
 - first voice use asks for an API key if neither Credential Manager nor `OPENAI_API_KEY` has one
+- default voice is `alloy`; selected voice is saved under the user's AppData settings
 
 ## Run
 
