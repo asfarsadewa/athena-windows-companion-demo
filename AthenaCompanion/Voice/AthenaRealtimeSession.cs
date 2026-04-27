@@ -149,52 +149,10 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                     voice = _voice
                 }
             },
-            tools = CreateTools(),
+            tools = AthenaToolDefinitions.Create(strict: false),
             tool_choice = "auto"
         }
     };
-
-    private static object[] CreateTools() =>
-    [
-        new
-        {
-            type = "function",
-            name = "inspect_screen",
-            description = "Capture the user's current primary screen and answer a concise question about what is visible. Use only after the user explicitly asks about their screen.",
-            parameters = new
-            {
-                type = "object",
-                properties = new
-                {
-                    question = new
-                    {
-                        type = "string",
-                        description = "The user's screen-related question."
-                    }
-                },
-                required = new[] { "question" }
-            }
-        },
-        new
-        {
-            type = "function",
-            name = "create_screen_image",
-            description = "Capture the user's current primary screen, summarize it, generate an image such as an infographic with gpt-image-2, and open it in a lightbox. Use only after explicit user request.",
-            parameters = new
-            {
-                type = "object",
-                properties = new
-                {
-                    prompt = new
-                    {
-                        type = "string",
-                        description = "The user's requested generated-image instruction."
-                    }
-                },
-                required = new[] { "prompt" }
-            }
-        }
-    ];
 
     private void OnAudioAvailable(object? sender, byte[] audio)
     {

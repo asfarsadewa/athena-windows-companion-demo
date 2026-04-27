@@ -23,7 +23,7 @@
                    Margin="0,8,0,14"
                    TextWrapping="Wrap"
                    Foreground="#555"
-                   Text="Athena uses your own OpenAI API key for voice. The key is stored locally in Windows Credential Manager." />
+                   Text="Athena uses your own OpenAI API key for voice and text mode. The key is stored locally in Windows Credential Manager." />
 
         <PasswordBox x:Name="ApiKeyBox"
                      Grid.Row="2"

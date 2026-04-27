@@ -1,0 +1,75 @@
+<Window x:Class="AthenaCompanion.UI.TextChatWindow"
+        x:ClassModifier="internal"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Athena Text"
+        Width="430"
+        Height="560"
+        MinWidth="360"
+        MinHeight="420"
+        Topmost="True"
+        WindowStartupLocation="Manual">
+    <Grid Background="#17151f">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <DockPanel Margin="14,12,14,10"
+                   LastChildFill="True">
+            <Button DockPanel.Dock="Right"
+                    Content="Close"
+                    Width="72"
+                    Height="28"
+                    Click="OnClose" />
+            <StackPanel>
+                <TextBlock Text="Athena Text"
+                           Foreground="#f7f1ff"
+                           FontSize="17"
+                           FontWeight="SemiBold" />
+                <TextBlock x:Name="StatusText"
+                           Foreground="#bdb4d4"
+                           FontSize="12"
+                           Text="Ready" />
+            </StackPanel>
+        </DockPanel>
+
+        <Border Grid.Row="1"
+                Margin="14,0"
+                Background="#201d2b"
+                BorderBrush="#3f3855"
+                BorderThickness="1"
+                CornerRadius="8">
+            <ScrollViewer x:Name="MessagesScroll"
+                          Padding="12"
+                          VerticalScrollBarVisibility="Auto">
+                <StackPanel x:Name="MessagesPanel" />
+            </ScrollViewer>
+        </Border>
+
+        <Grid Grid.Row="2"
+              Margin="14,10,14,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <TextBox x:Name="InputBox"
+                     MinHeight="38"
+                     MaxHeight="96"
+                     Padding="10,8"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     PreviewKeyDown="OnInputPreviewKeyDown" />
+            <Button x:Name="SendButton"
+                    Grid.Column="1"
+                    Content="Send"
+                    Width="78"
+                    Height="38"
+                    Margin="8,0,0,0"
+                    Click="OnSend" />
+        </Grid>
+    </Grid>
+</Window>

@@ -1,6 +1,6 @@
 # Athena Voice Agent Plan
 
-Status: first local implementation in progress. Athena has pause-only voice mode, local key setup, microphone streaming, response playback, screen inspection, and screen-based image generation. Further tuning is still expected after live testing.
+Status: first local implementation in progress. Athena has separate pause modes for voice and text, local key setup, microphone streaming, response playback, screen inspection, and screen-based image generation. Further tuning is still expected after live testing.
 
 ## Product Rules
 
@@ -11,6 +11,30 @@ Status: first local implementation in progress. Athena has pause-only voice mode
 - Local development may fall back to the `OPENAI_API_KEY` environment variable.
 - Voice is optional. If no key is configured, Athena still walks and poses normally.
 - Screen capture is optional and tool-triggered. Athena should only capture the primary screen after the user explicitly asks about the screen or asks for an image based on the screen.
+- Text chat is optional and separate from voice. Text mode must not start microphone capture.
+
+## Interaction Modes
+
+Athena has three high-level interaction modes:
+
+- Walking:
+  - Athena walks normally above the taskbar.
+  - The `Chat` bubble is visible.
+  - No microphone capture.
+  - No text chat window.
+- Voice pause:
+  - Triggered by left-clicking Athena or choosing the tray pause item.
+  - Athena pauses in pose animation.
+  - Realtime voice session starts if an API key is available.
+  - Microphone capture is active only while this mode is active.
+- Text pause:
+  - Triggered by clicking the `Chat` bubble or tray text chat item.
+  - Athena pauses in pose animation.
+  - A compact text chat window opens.
+  - Uses `gpt-5.5` through the Responses API.
+  - Does not start microphone capture.
+
+The code keeps interaction mode separate from animation mode so a dedicated text-pause sprite clip can be added later without changing the app state model.
 
 ## Voice Activation Model
 
@@ -38,6 +62,8 @@ Athena only listens while she is paused.
 
 This keeps the privacy boundary simple: pause means "Athena may listen"; walking means "Athena is not listening." Screen capture requires a separate explicit screen or image-generation request.
 
+In text pause mode, "pause" means Athena is available for typed chat, not microphone listening.
+
 ## OpenAI API Direction
 
 Initial implementation should use the OpenAI Realtime API over WebSocket from the WPF app.
@@ -50,6 +76,11 @@ Initial implementation should use the OpenAI Realtime API over WebSocket from th
   - Realtime function tools: `inspect_screen`, `create_screen_image`
   - Screen understanding: `gpt-5.5` through the Responses API with a screenshot input
   - Screen image generation: `gpt-image-2` through the Image API
+- Text mode:
+  - Model: `gpt-5.5`
+  - Endpoint: Responses API
+  - Conversation state: `previous_response_id`
+  - Tool calling: same local `inspect_screen` and `create_screen_image` tools
 - Auth source:
   1. Windows Credential Manager
   2. `OPENAI_API_KEY` environment variable for local development
@@ -75,7 +106,9 @@ Use a short, structured Realtime prompt. Keep it direct because realtime models 
 # Language
 - Match the user's language by default.
 - If the user speaks Bahasa Indonesia, respond in natural Bahasa Indonesia.
+- If the user speaks Chinese, respond in natural Chinese using the script and tone the user used.
 - If the user mixes Bahasa Indonesia and English, mirror that mix naturally.
+- If the user mixes Chinese with English or Bahasa Indonesia, mirror that mix naturally.
 - If the input language is unclear, ask a brief clarification.
 
 # Boundaries
@@ -93,6 +126,9 @@ AthenaCompanion/
     AthenaAudioInput.cs
     AthenaAudioOutput.cs
     AthenaVoicePrompt.cs
+  TextChat/
+    AthenaTextChatSession.cs
+    AthenaTextPrompt.cs
   Security/
     IOpenAiKeyStore.cs
     WindowsCredentialOpenAiKeyStore.cs
@@ -118,10 +154,12 @@ Responsibilities:
 - `WindowsCredentialOpenAiKeyStore`: reads, writes, and deletes the user's API key from Windows Credential Manager.
 - `ApiKeySetupWindow`: collects and validates the user's key without persisting it until validation succeeds.
 - `AthenaSettings`: stores non-secret user preferences such as selected voice under AppData.
-- `AthenaToolExecutor`: executes local screen tools requested by the Realtime model.
+- `AthenaToolExecutor`: executes local screen tools requested by voice or text mode.
 - `OpenAiToolClient`: calls Responses for screen inspection and the Image API for generated screen images.
 - `ScreenCaptureService`: captures the primary display as PNG bytes.
 - `ImageLightboxWindow`: displays generated images and offers copy/open-folder actions.
+- `AthenaTextChatSession`: owns the text-mode Responses loop, function-call execution, and previous response state.
+- `TextChatWindow`: hosts the compact always-on-top typed chat surface.
 
 ## Implementation Phases
 
@@ -159,12 +197,19 @@ Responsibilities:
    - Send function results back to Realtime and ask Athena to speak the result.
    - Open generated images in a WPF lightbox.
 
-7. **Conversation behavior** - next
+7. **Text chat mode** - done
+   - Add a clickable `Chat` bubble in walking mode.
+   - Add a separate text pause interaction mode.
+   - Use the Responses API with `gpt-5.5`.
+   - Reuse the same local screen and image tools.
+   - Resume walking when the text chat window closes.
+
+8. **Conversation behavior** - next
    - Tune turn detection and interruption handling.
    - Add Bahasa Indonesia and mixed-language test phrases.
    - Add short persona samples for greeting, unclear audio, and goodbye.
 
-8. **Distribution hardening** - later
+9. **Distribution hardening** - later
    - Add explicit setup copy explaining that users pay OpenAI directly for their own key usage.
    - Add remove-key flow.
    - Add "voice disabled" fallback when no key, microphone permission, or screen-capture permission exists.
@@ -182,9 +227,14 @@ Responsibilities:
 - Click-through mode prevents left-click pause toggling.
 - Bahasa Indonesia input receives Bahasa Indonesia output.
 - Mixed Indonesian-English input can be mirrored naturally.
+- Chinese input receives natural Chinese output.
+- Mixed Chinese-English or Chinese-Indonesian input can be mirrored naturally.
 - Network failure shows a non-blocking status and does not crash the app.
 - "What's on my screen?" triggers `inspect_screen` and receives a spoken answer.
 - "Generate an infographic of my screen" triggers `create_screen_image`, opens the lightbox, and saves a PNG under `Pictures\Athena Companion`.
+- Clicking the `Chat` bubble opens text mode without starting microphone capture.
+- Text mode can answer normal typed chat through `gpt-5.5`.
+- Text mode can use `inspect_screen` and `create_screen_image` when the typed request explicitly asks for screen/image work.
 
 ## Later Ideas
 

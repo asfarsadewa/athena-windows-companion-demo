@@ -2,7 +2,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using AthenaCompanion.Security;
 using AthenaCompanion.Settings;
+using AthenaCompanion.TextChat;
+using AthenaCompanion.Tools;
 using AthenaCompanion.UI;
 using AthenaCompanion.Voice;
 using Microsoft.Win32;
@@ -29,11 +32,13 @@ public partial class MainWindow : Window
     private readonly Random _random = new();
     private readonly SpriteAtlas _atlas = SpriteAtlas.Load();
     private readonly AthenaSettings _settings = AthenaSettings.Load();
+    private readonly OpenAiKeyProvider _keyProvider = new();
     private readonly AthenaVoiceController _voiceController;
 
     private WinForms.NotifyIcon? _notifyIcon;
     private WinForms.ToolStripMenuItem? _pauseMenuItem;
     private WinForms.ToolStripMenuItem? _clickThroughMenuItem;
+    private WinForms.ToolStripMenuItem? _textChatMenuItem;
     private WinForms.ToolStripMenuItem? _voiceStatusMenuItem;
     private WinForms.ToolStripMenuItem? _voiceMenuItem;
     private WinForms.ToolStripMenuItem? _removeApiKeyMenuItem;
@@ -48,10 +53,13 @@ public partial class MainWindow : Window
     private double _walkSpeed;
     private double _x;
     private int _direction = 1;
-    private bool _movementPaused;
+    private AthenaInteractionMode _interactionMode = AthenaInteractionMode.None;
     private bool _clickThrough;
     private string _voiceStatus = "Voice off";
     private string _busyIndicatorLabel = "Thinking";
+    private TextChatWindow? _textChatWindow;
+
+    private bool IsInteractionPaused => _interactionMode != AthenaInteractionMode.None;
 
     public MainWindow()
     {
@@ -63,6 +71,7 @@ public partial class MainWindow : Window
         _voiceController.Error += OnVoiceError;
         _nextPoseSeconds = RandomRange(8, 18);
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
+        UpdateInteractionVisuals();
     }
 
     private void OnLoaded(object sender, RoutedEventArgs e)
@@ -82,6 +91,7 @@ public partial class MainWindow : Window
         _voiceController.StatusChanged -= OnVoiceStatusChanged;
         _voiceController.Error -= OnVoiceError;
         _ = _voiceController.DisposeAsync();
+        CloseTextChatWindow();
 
         if (_notifyIcon is not null)
         {
@@ -107,6 +117,17 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    private void OnTextModeBubbleMouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (_clickThrough)
+        {
+            return;
+        }
+
+        ToggleTextMode();
+        e.Handled = true;
+    }
+
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
         Dispatcher.Invoke(() => RefreshTrackBounds(resetPosition: false));
@@ -118,7 +139,7 @@ public partial class MainWindow : Window
         var dt = Math.Clamp(now - _lastSeconds, 0, 0.08);
         _lastSeconds = now;
 
-        if (_movementPaused)
+        if (IsInteractionPaused)
         {
             EnterPoseIfNeeded(now);
         }
@@ -231,6 +252,9 @@ public partial class MainWindow : Window
         _clickThroughMenuItem = new WinForms.ToolStripMenuItem("Click-through");
         _clickThroughMenuItem.Click += (_, _) => ToggleClickThrough();
 
+        _textChatMenuItem = new WinForms.ToolStripMenuItem("Text chat");
+        _textChatMenuItem.Click += (_, _) => ToggleTextMode();
+
         _voiceStatusMenuItem = new WinForms.ToolStripMenuItem("Voice off") { Enabled = false };
         _voiceMenuItem = BuildVoiceMenu();
 
@@ -253,6 +277,7 @@ public partial class MainWindow : Window
 
         var menu = new WinForms.ContextMenuStrip();
         menu.Items.Add(_pauseMenuItem);
+        menu.Items.Add(_textChatMenuItem);
         menu.Items.Add(_clickThroughMenuItem);
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add(_voiceStatusMenuItem);
@@ -276,18 +301,59 @@ public partial class MainWindow : Window
 
     private void TogglePause()
     {
-        _movementPaused = !_movementPaused;
-        if (!_movementPaused)
+        if (_interactionMode == AthenaInteractionMode.Voice)
         {
-            StopVoiceMode();
-            EnterWalk(_clock.Elapsed.TotalSeconds);
+            ResumeWalking();
         }
         else
         {
-            EnterPose(_clock.Elapsed.TotalSeconds, brief: false);
-            StartVoiceMode();
+            EnterVoiceMode();
         }
 
+        UpdateMenuState();
+    }
+
+    private void ToggleTextMode()
+    {
+        if (_interactionMode == AthenaInteractionMode.Text)
+        {
+            _textChatWindow?.Activate();
+        }
+        else
+        {
+            EnterTextMode();
+        }
+
+        UpdateMenuState();
+    }
+
+    private void EnterVoiceMode()
+    {
+        CloseTextChatWindow();
+        _interactionMode = AthenaInteractionMode.Voice;
+        EnterPose(_clock.Elapsed.TotalSeconds, brief: false);
+        UpdateInteractionVisuals();
+        StartVoiceMode();
+    }
+
+    private void EnterTextMode()
+    {
+        StopVoiceMode();
+        _interactionMode = AthenaInteractionMode.Text;
+        EnterPose(_clock.Elapsed.TotalSeconds, brief: false);
+        UpdateBusyIndicatorState("Text ready");
+        UpdateInteractionVisuals();
+        OpenTextChatWindow();
+    }
+
+    private void ResumeWalking()
+    {
+        StopVoiceMode();
+        CloseTextChatWindow();
+        _interactionMode = AthenaInteractionMode.None;
+        EnterWalk(_clock.Elapsed.TotalSeconds);
+        UpdateBusyIndicatorState("Ready");
+        UpdateInteractionVisuals();
         UpdateMenuState();
     }
 
@@ -295,6 +361,7 @@ public partial class MainWindow : Window
     {
         _clickThrough = !_clickThrough;
         ApplyClickThroughStyle(_clickThrough);
+        UpdateInteractionVisuals();
         UpdateMenuState();
     }
 
@@ -326,7 +393,7 @@ public partial class MainWindow : Window
         _settings.Voice = voice;
         _settings.Save();
 
-        if (_movementPaused)
+        if (_interactionMode == AthenaInteractionMode.Voice)
         {
             await _voiceController.StopAsync();
             await _voiceController.StartAsync(this);
@@ -339,8 +406,14 @@ public partial class MainWindow : Window
     {
         if (_pauseMenuItem is not null)
         {
-            _pauseMenuItem.Checked = _movementPaused;
-            _pauseMenuItem.Text = _movementPaused ? "Resume walking" : "Pause walking";
+            _pauseMenuItem.Checked = _interactionMode == AthenaInteractionMode.Voice;
+            _pauseMenuItem.Text = _interactionMode == AthenaInteractionMode.Voice ? "Resume walking" : "Pause for voice";
+        }
+
+        if (_textChatMenuItem is not null)
+        {
+            _textChatMenuItem.Checked = _interactionMode == AthenaInteractionMode.Text;
+            _textChatMenuItem.Text = _interactionMode == AthenaInteractionMode.Text ? "Focus text chat" : "Text chat";
         }
 
         if (_clickThroughMenuItem is not null)
@@ -386,7 +459,11 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             _voiceStatus = status;
-            UpdateBusyIndicatorState(status);
+            if (_interactionMode != AthenaInteractionMode.Text)
+            {
+                UpdateBusyIndicatorState(status);
+            }
+
             UpdateMenuState();
         });
     }
@@ -396,7 +473,11 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             _voiceStatus = "Voice error";
-            UpdateBusyIndicatorState(_voiceStatus);
+            if (_interactionMode == AthenaInteractionMode.Voice)
+            {
+                UpdateBusyIndicatorState(_voiceStatus);
+            }
+
             UpdateMenuState();
             _notifyIcon?.ShowBalloonTip(4000, "Athena Voice", error, WinForms.ToolTipIcon.Warning);
         });
@@ -413,6 +494,110 @@ public partial class MainWindow : Window
         lightbox.Activate();
     }
 
+    private void OpenTextChatWindow()
+    {
+        if (_textChatWindow is not null)
+        {
+            _textChatWindow.Activate();
+            return;
+        }
+
+        var apiKey = GetOrPromptOpenAiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            ResumeWalking();
+            return;
+        }
+
+        var tools = new AthenaToolExecutor(
+            () => apiKey,
+            ShowGeneratedImage,
+            status => Dispatcher.Invoke(() => UpdateBusyIndicatorState(status)));
+        var session = new AthenaTextChatSession(apiKey, tools);
+        var chatWindow = new TextChatWindow(session)
+        {
+            Owner = this
+        };
+
+        chatWindow.StatusChanged += OnTextChatStatusChanged;
+        chatWindow.Closed += OnTextChatClosed;
+        PositionTextChatWindow(chatWindow);
+        _textChatWindow = chatWindow;
+        chatWindow.Show();
+        chatWindow.Activate();
+    }
+
+    private void CloseTextChatWindow()
+    {
+        var chatWindow = _textChatWindow;
+        if (chatWindow is null)
+        {
+            return;
+        }
+
+        _textChatWindow = null;
+        chatWindow.StatusChanged -= OnTextChatStatusChanged;
+        chatWindow.Closed -= OnTextChatClosed;
+        chatWindow.Close();
+    }
+
+    private string? GetOrPromptOpenAiKey()
+    {
+        var lookup = _keyProvider.TryGetApiKey();
+        if (!string.IsNullOrWhiteSpace(lookup.ApiKey))
+        {
+            return lookup.ApiKey;
+        }
+
+        var dialog = new Settings.ApiKeySetupWindow { Owner = this };
+        if (dialog.ShowDialog() != true)
+        {
+            return null;
+        }
+
+        _keyProvider.SaveApiKey(dialog.ApiKey);
+        UpdateMenuState();
+        return dialog.ApiKey;
+    }
+
+    private void PositionTextChatWindow(Window chatWindow)
+    {
+        var screen = WinForms.Screen.PrimaryScreen ?? WinForms.Screen.AllScreens[0];
+        var workingArea = DeviceRectToDip(screen.WorkingArea);
+        var left = Left + ActualWidth + 8;
+        if (left + chatWindow.Width > workingArea.Right)
+        {
+            left = Left - chatWindow.Width - 8;
+        }
+
+        chatWindow.Left = Math.Clamp(left, workingArea.Left + 8, workingArea.Right - chatWindow.Width - 8);
+        chatWindow.Top = Math.Clamp(Top - chatWindow.Height + ActualHeight, workingArea.Top + 8, workingArea.Bottom - chatWindow.Height - 8);
+    }
+
+    private void OnTextChatStatusChanged(object? sender, string status)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            UpdateBusyIndicatorState(status);
+            UpdateMenuState();
+        });
+    }
+
+    private void OnTextChatClosed(object? sender, EventArgs e)
+    {
+        if (sender is TextChatWindow chatWindow)
+        {
+            chatWindow.StatusChanged -= OnTextChatStatusChanged;
+            chatWindow.Closed -= OnTextChatClosed;
+        }
+
+        _textChatWindow = null;
+        if (_interactionMode == AthenaInteractionMode.Text)
+        {
+            ResumeWalking();
+        }
+    }
+
     private void UpdateBusyIndicatorState(string status)
     {
         _busyIndicatorLabel = status switch
@@ -422,6 +607,7 @@ public partial class MainWindow : Window
             "Using tool" => "Thinking",
             "Looking at screen" => "Looking",
             "Creating image" => "Drawing",
+            "Text ready" => _interactionMode == AthenaInteractionMode.Text ? "Chat" : string.Empty,
             _ => string.Empty
         };
 
@@ -433,6 +619,13 @@ public partial class MainWindow : Window
 
         VoiceBusyText.Text = _busyIndicatorLabel;
         VoiceBusyIndicator.Visibility = Visibility.Visible;
+    }
+
+    private void UpdateInteractionVisuals()
+    {
+        TextModeBubble.Visibility = !_clickThrough && _interactionMode == AthenaInteractionMode.None
+            ? Visibility.Visible
+            : Visibility.Collapsed;
     }
 
     private void UpdateBusyIndicatorAnimation(double now)
@@ -495,6 +688,13 @@ internal enum BehaviorMode
 {
     Walk,
     Pose
+}
+
+internal enum AthenaInteractionMode
+{
+    None,
+    Voice,
+    Text
 }
 
 internal sealed record AnimationClip(string Name, int StartFrame, int FrameCount, double FramesPerSecond, bool PingPong);

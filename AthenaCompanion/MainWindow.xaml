@@ -22,6 +22,22 @@
           Background="Transparent"
           SnapsToDevicePixels="True"
           UseLayoutRounding="True">
+        <Border x:Name="TextModeBubble"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="0,6,6,0"
+                Padding="10,5"
+                Background="#E8262233"
+                BorderBrush="#B8D9CCFF"
+                BorderThickness="1"
+                CornerRadius="10"
+                MouseLeftButtonUp="OnTextModeBubbleMouseLeftButtonUp">
+            <TextBlock Text="Chat"
+                       Foreground="#F7F1FF"
+                       FontSize="12"
+                       FontWeight="SemiBold" />
+        </Border>
+
         <Border x:Name="VoiceBusyIndicator"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"

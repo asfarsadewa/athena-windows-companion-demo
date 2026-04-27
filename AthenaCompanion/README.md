@@ -1,8 +1,8 @@
 # Athena Companion
 
-Transparent WPF desktop companion window for Windows. Athena walks just above the primary taskbar, pauses for pose animation, and exposes a tray menu for pause, click-through, and exit.
+Transparent WPF desktop companion window for Windows. Athena walks just above the primary taskbar, pauses for pose animation, and exposes a tray menu for pause, text chat, click-through, voice setup, and exit.
 
-Left-click Athena to toggle her pause pose. Right-click her to open the tray menu.
+Left-click Athena to toggle voice pause mode. Click the small `Chat` bubble to open text pause mode. Right-click Athena to open the tray menu.
 
 ## Voice Agent Plan
 
@@ -24,6 +24,16 @@ Pause-only voice tools:
 - image requests such as "generate an infographic of what I am seeing" capture the primary display, prepare an image brief with `gpt-5.5`, generate a PNG with `gpt-image-2`, and open it in Athena's lightbox
 - generated screen images are saved under the user's `Pictures\Athena Companion` folder
 - screen capture is only triggered by an explicit voice tool request while Athena is paused
+
+## Text Chat
+
+Text chat is a separate pause mode from voice:
+
+- click the `Chat` bubble while Athena is walking to pause her and open the text chat window
+- text mode uses `gpt-5.5` through the Responses API, not the Realtime voice WebSocket
+- text mode has the same local tools as voice mode, including screen inspection and `gpt-image-2` image generation
+- closing the text chat window resumes walking
+- text mode does not start microphone capture
 
 ## Run
 
