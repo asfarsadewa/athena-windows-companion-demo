@@ -1,6 +1,3 @@
-using System.Text.Json;
-using System.Windows;
-
 namespace AthenaCompanion.Tools;
 
 internal sealed class AthenaToolExecutor
@@ -43,7 +40,7 @@ internal sealed class AthenaToolExecutor
     private async Task<string> InspectScreenAsync(string apiKey, string argumentsJson, CancellationToken cancellationToken)
     {
         _setStatus("Looking at screen");
-        var request = ReadStringArgument(argumentsJson, "question") ?? "What is on my screen right now?";
+        var request = ToolArgumentReader.ReadStringArgument(argumentsJson, "question") ?? "What is on my screen right now?";
         var screenshot = _screenCapture.CapturePrimaryScreenPng();
         var client = new OpenAiToolClient(apiKey);
         var answer = await client.AnalyzeScreenAsync(screenshot, request, cancellationToken);
@@ -53,8 +50,8 @@ internal sealed class AthenaToolExecutor
     private async Task<string> CreateScreenImageAsync(string apiKey, string argumentsJson, CancellationToken cancellationToken)
     {
         _setStatus("Creating image");
-        var request = ReadStringArgument(argumentsJson, "prompt") ??
-            ReadStringArgument(argumentsJson, "request") ??
+        var request = ToolArgumentReader.ReadStringArgument(argumentsJson, "prompt") ??
+            ToolArgumentReader.ReadStringArgument(argumentsJson, "request") ??
             "Generate an infographic from what is visible on my screen.";
 
         var screenshot = _screenCapture.CapturePrimaryScreenPng();
@@ -64,29 +61,5 @@ internal sealed class AthenaToolExecutor
         System.Windows.Application.Current.Dispatcher.Invoke(() => _showImage(result.ImagePath));
 
         return $"Done. I created an image from your screen and opened it in a lightbox. Saved image: {result.ImagePath}";
-    }
-
-    private static string? ReadStringArgument(string json, string name)
-    {
-        if (string.IsNullOrWhiteSpace(json))
-        {
-            return null;
-        }
-
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            if (document.RootElement.TryGetProperty(name, out var value) &&
-                value.ValueKind == JsonValueKind.String)
-            {
-                return value.GetString();
-            }
-        }
-        catch
-        {
-            return null;
-        }
-
-        return null;
     }
 }

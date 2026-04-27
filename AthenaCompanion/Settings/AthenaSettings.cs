@@ -13,16 +13,18 @@ internal sealed class AthenaSettings
 
     public string Voice { get; set; } = RealtimeVoiceOptions.Default;
 
-    public static AthenaSettings Load()
+    public static AthenaSettings Load() => LoadFromPath(SettingsPath);
+
+    internal static AthenaSettings LoadFromPath(string path)
     {
-        if (!File.Exists(SettingsPath))
+        if (!File.Exists(path))
         {
             return new AthenaSettings();
         }
 
         try
         {
-            var settings = JsonSerializer.Deserialize<AthenaSettings>(File.ReadAllText(SettingsPath));
+            var settings = JsonSerializer.Deserialize<AthenaSettings>(File.ReadAllText(path));
             settings ??= new AthenaSettings();
             settings.Normalize();
             return settings;
@@ -33,12 +35,19 @@ internal sealed class AthenaSettings
         }
     }
 
-    public void Save()
+    public void Save() => SaveToPath(SettingsPath);
+
+    internal void SaveToPath(string path)
     {
-        Directory.CreateDirectory(SettingsDirectory);
+        var directory = Path.GetDirectoryName(path);
+        if (!string.IsNullOrWhiteSpace(directory))
+        {
+            Directory.CreateDirectory(directory);
+        }
+
         Normalize();
         var json = JsonSerializer.Serialize(this, new JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(SettingsPath, json);
+        File.WriteAllText(path, json);
     }
 
     private void Normalize()

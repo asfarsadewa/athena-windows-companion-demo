@@ -82,7 +82,7 @@ internal sealed class AthenaTextChatSession : IDisposable
 
     public void Dispose() => _httpClient.Dispose();
 
-    private async Task<TextResponse> CreateResponseAsync(
+    private async Task<AthenaTextResponse> CreateResponseAsync(
         object[] input,
         string? previousResponseId,
         CancellationToken cancellationToken)
@@ -108,121 +108,9 @@ internal sealed class AthenaTextChatSession : IDisposable
         var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new InvalidOperationException(ReadApiError(responseJson));
+            throw new InvalidOperationException(AthenaTextResponseParser.ReadApiError(responseJson));
         }
 
-        return ParseResponse(responseJson);
+        return AthenaTextResponseParser.Parse(responseJson);
     }
-
-    private static TextResponse ParseResponse(string json)
-    {
-        using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-        var id = root.TryGetProperty("id", out var idElement)
-            ? idElement.GetString() ?? string.Empty
-            : string.Empty;
-
-        var text = ExtractResponseText(root);
-        var toolCalls = ExtractToolCalls(root);
-        return new TextResponse(id, text, toolCalls);
-    }
-
-    private static string ExtractResponseText(JsonElement root)
-    {
-        if (root.TryGetProperty("output_text", out var outputText) &&
-            outputText.ValueKind == JsonValueKind.String)
-        {
-            return outputText.GetString() ?? string.Empty;
-        }
-
-        if (!root.TryGetProperty("output", out var output) ||
-            output.ValueKind != JsonValueKind.Array)
-        {
-            return string.Empty;
-        }
-
-        var builder = new StringBuilder();
-        foreach (var item in output.EnumerateArray())
-        {
-            if (!item.TryGetProperty("content", out var content) ||
-                content.ValueKind != JsonValueKind.Array)
-            {
-                continue;
-            }
-
-            foreach (var part in content.EnumerateArray())
-            {
-                if (part.TryGetProperty("text", out var text) &&
-                    text.ValueKind == JsonValueKind.String)
-                {
-                    builder.AppendLine(text.GetString());
-                }
-            }
-        }
-
-        return builder.ToString().Trim();
-    }
-
-    private static IReadOnlyList<TextToolCall> ExtractToolCalls(JsonElement root)
-    {
-        if (!root.TryGetProperty("output", out var output) ||
-            output.ValueKind != JsonValueKind.Array)
-        {
-            return [];
-        }
-
-        var calls = new List<TextToolCall>();
-        foreach (var item in output.EnumerateArray())
-        {
-            if (!item.TryGetProperty("type", out var type) ||
-                !string.Equals(type.GetString(), "function_call", StringComparison.Ordinal) ||
-                !item.TryGetProperty("call_id", out var callIdElement) ||
-                !item.TryGetProperty("name", out var nameElement))
-            {
-                continue;
-            }
-
-            var callId = callIdElement.GetString();
-            var name = nameElement.GetString();
-            if (string.IsNullOrWhiteSpace(callId) || string.IsNullOrWhiteSpace(name))
-            {
-                continue;
-            }
-
-            var arguments = "{}";
-            if (item.TryGetProperty("arguments", out var argumentsElement))
-            {
-                arguments = argumentsElement.ValueKind == JsonValueKind.String
-                    ? argumentsElement.GetString() ?? "{}"
-                    : argumentsElement.GetRawText();
-            }
-
-            calls.Add(new TextToolCall(callId, name, arguments));
-        }
-
-        return calls;
-    }
-
-    private static string ReadApiError(string json)
-    {
-        try
-        {
-            using var document = JsonDocument.Parse(json);
-            if (document.RootElement.TryGetProperty("error", out var error) &&
-                error.TryGetProperty("message", out var message))
-            {
-                return message.GetString() ?? "OpenAI API error.";
-            }
-        }
-        catch
-        {
-            return "OpenAI API error.";
-        }
-
-        return "OpenAI API error.";
-    }
-
-    private sealed record TextResponse(string Id, string Text, IReadOnlyList<TextToolCall> ToolCalls);
-
-    private sealed record TextToolCall(string CallId, string Name, string Arguments);
 }

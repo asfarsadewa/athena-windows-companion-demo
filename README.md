@@ -8,6 +8,12 @@ Athena is a transparent WPF desktop companion for Windows. She walks above the t
 dotnet run --project .\AthenaCompanion\AthenaCompanion.csproj
 ```
 
+## Test
+
+```powershell
+dotnet test .\AthenaCompanion.sln
+```
+
 ## Build Installer
 
 ```powershell

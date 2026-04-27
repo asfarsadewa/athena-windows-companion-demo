@@ -48,7 +48,7 @@ internal sealed class OpenAiToolClient
                         new
                         {
                             type = "input_image",
-                            image_url = ToDataUrl(screenshotPng)
+                            image_url = OpenAiToolResponseParser.ToDataUrl(screenshotPng)
                         }
                     }
                 }
@@ -58,7 +58,7 @@ internal sealed class OpenAiToolClient
         using var response = await PostJsonAsync("https://api.openai.com/v1/responses", payload, cancellationToken);
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         response.EnsureSuccessStatusCode();
-        return ExtractResponseText(json);
+        return OpenAiToolResponseParser.ExtractResponseText(json);
     }
 
     public async Task<ScreenImageResult> GenerateScreenInfographicAsync(
@@ -67,7 +67,7 @@ internal sealed class OpenAiToolClient
         CancellationToken cancellationToken)
     {
         var analysis = await AnalyzeScreenForImagePromptAsync(screenshotPng, request, cancellationToken);
-        var imagePrompt = BuildImagePrompt(analysis, request);
+        var imagePrompt = OpenAiToolResponseParser.BuildImagePrompt(analysis, request);
 
         var payload = new
         {
@@ -83,7 +83,7 @@ internal sealed class OpenAiToolClient
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         response.EnsureSuccessStatusCode();
 
-        var imageBytes = ExtractImageBytes(json);
+        var imageBytes = OpenAiToolResponseParser.ExtractImageBytes(json);
         var path = SaveGeneratedImage(imageBytes);
         return new ScreenImageResult(path, analysis);
     }
@@ -108,80 +108,11 @@ internal sealed class OpenAiToolClient
             cancellationToken);
     }
 
-    private static string BuildImagePrompt(string analysis, string request) =>
-        $"""
-        Create a polished, readable infographic based on the user's current screen.
-        Style: elegant modern desktop-companion presentation, clear hierarchy, soft white/lavender accents, restrained 90s anime UI influence, no copyrighted logos unless already described generically.
-        Layout: landscape 1536x1024, title at top, 3-6 organized sections, clean icon-like visual metaphors, readable labels.
-        User request: {request}
-
-        Source content from screen analysis:
-        {analysis}
-
-        Constraints: do not reproduce private data verbatim; do not include API keys, emails, passwords, account numbers, or private chat text; summarize sensitive-looking information generically.
-        """;
-
     private async Task<HttpResponseMessage> PostJsonAsync(string url, object payload, CancellationToken cancellationToken)
     {
         var json = JsonSerializer.Serialize(payload);
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
         return await _httpClient.PostAsync(url, content, cancellationToken);
-    }
-
-    private static string ExtractResponseText(string json)
-    {
-        using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-
-        if (root.TryGetProperty("output_text", out var outputText) &&
-            outputText.ValueKind == JsonValueKind.String)
-        {
-            return outputText.GetString() ?? string.Empty;
-        }
-
-        if (root.TryGetProperty("output", out var output) &&
-            output.ValueKind == JsonValueKind.Array)
-        {
-            var builder = new StringBuilder();
-            foreach (var item in output.EnumerateArray())
-            {
-                if (!item.TryGetProperty("content", out var content) ||
-                    content.ValueKind != JsonValueKind.Array)
-                {
-                    continue;
-                }
-
-                foreach (var part in content.EnumerateArray())
-                {
-                    if (part.TryGetProperty("text", out var text) &&
-                        text.ValueKind == JsonValueKind.String)
-                    {
-                        builder.AppendLine(text.GetString());
-                    }
-                }
-            }
-
-            var extracted = builder.ToString().Trim();
-            if (!string.IsNullOrWhiteSpace(extracted))
-            {
-                return extracted;
-            }
-        }
-
-        return "I inspected the screen, but I could not extract a text answer.";
-    }
-
-    private static byte[] ExtractImageBytes(string json)
-    {
-        using var document = JsonDocument.Parse(json);
-        var root = document.RootElement;
-        var b64 = root.GetProperty("data")[0].GetProperty("b64_json").GetString();
-        if (string.IsNullOrWhiteSpace(b64))
-        {
-            throw new InvalidOperationException("Image response did not include image data.");
-        }
-
-        return Convert.FromBase64String(b64);
     }
 
     private static string SaveGeneratedImage(byte[] imageBytes)
@@ -195,8 +126,6 @@ internal sealed class OpenAiToolClient
         File.WriteAllBytes(path, imageBytes);
         return path;
     }
-
-    private static string ToDataUrl(byte[] png) => $"data:image/png;base64,{Convert.ToBase64String(png)}";
 }
 
 internal sealed record ScreenImageResult(string ImagePath, string Analysis);

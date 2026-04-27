@@ -267,17 +267,17 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                 break;
             case "response.output_item.added":
                 _isSpeaking = false;
-                StatusChanged?.Invoke(this, IsFunctionCallEvent(root) ? "Using tool" : "Thinking");
+                StatusChanged?.Invoke(this, RealtimeEventParser.IsFunctionCallEvent(root) ? "Using tool" : "Thinking");
                 break;
             case "response.output_item.done":
-                if (TryReadFunctionCallFromItemEvent(root, out var itemCall))
+                if (RealtimeEventParser.TryReadFunctionCallFromItemEvent(root, out var itemCall))
                 {
                     await HandleFunctionCallAsync(itemCall, cancellationToken);
                 }
 
                 break;
             case "response.function_call_arguments.done":
-                if (TryReadFunctionCallFromProperties(root, out var argumentsCall))
+                if (RealtimeEventParser.TryReadFunctionCallFromProperties(root, out var argumentsCall))
                 {
                     await HandleFunctionCallAsync(argumentsCall, cancellationToken);
                 }
@@ -298,12 +298,12 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                 StatusChanged?.Invoke(this, "Listening");
                 break;
             case "error":
-                Error?.Invoke(this, ReadError(root));
+                Error?.Invoke(this, RealtimeEventParser.ReadError(root));
                 break;
         }
     }
 
-    private async Task HandleFunctionCallAsync(FunctionCall call, CancellationToken cancellationToken)
+    private async Task HandleFunctionCallAsync(RealtimeFunctionCall call, CancellationToken cancellationToken)
     {
         if (!_handledToolCallIds.Add(call.CallId))
         {
@@ -361,52 +361,6 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         ex.WebSocketErrorCode is WebSocketError.ConnectionClosedPrematurely or WebSocketError.InvalidState ||
         ex.Message.Contains("remote party closed", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsFunctionCallEvent(JsonElement root) =>
-        root.TryGetProperty("item", out var item) &&
-        item.TryGetProperty("type", out var type) &&
-        string.Equals(type.GetString(), "function_call", StringComparison.Ordinal);
-
-    private static bool TryReadFunctionCallFromItemEvent(JsonElement root, out FunctionCall call)
-    {
-        call = default!;
-        if (!root.TryGetProperty("item", out var item) ||
-            !item.TryGetProperty("type", out var type) ||
-            !string.Equals(type.GetString(), "function_call", StringComparison.Ordinal))
-        {
-            return false;
-        }
-
-        return TryReadFunctionCallFromProperties(item, out call);
-    }
-
-    private static bool TryReadFunctionCallFromProperties(JsonElement element, out FunctionCall call)
-    {
-        call = default!;
-        if (!element.TryGetProperty("call_id", out var callIdElement) ||
-            !element.TryGetProperty("name", out var nameElement))
-        {
-            return false;
-        }
-
-        var callId = callIdElement.GetString();
-        var name = nameElement.GetString();
-        if (string.IsNullOrWhiteSpace(callId) || string.IsNullOrWhiteSpace(name))
-        {
-            return false;
-        }
-
-        var arguments = "{}";
-        if (element.TryGetProperty("arguments", out var argumentsElement))
-        {
-            arguments = argumentsElement.ValueKind == JsonValueKind.String
-                ? argumentsElement.GetString() ?? "{}"
-                : argumentsElement.GetRawText();
-        }
-
-        call = new FunctionCall(callId, name, arguments);
-        return true;
-    }
-
     private void AddAudioDelta(JsonElement root)
     {
         if (!root.TryGetProperty("delta", out var deltaElement))
@@ -421,17 +375,6 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         }
 
         _audioOutput.AddPcm16(Convert.FromBase64String(delta));
-    }
-
-    private static string ReadError(JsonElement root)
-    {
-        if (root.TryGetProperty("error", out var error) &&
-            error.TryGetProperty("message", out var message))
-        {
-            return message.GetString() ?? "Realtime API error.";
-        }
-
-        return "Realtime API error.";
     }
 
     private async Task SendJsonAsync(object payload, CancellationToken cancellationToken)
@@ -454,6 +397,4 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
             _sendLock.Release();
         }
     }
-
-    private sealed record FunctionCall(string CallId, string Name, string Arguments);
 }

@@ -30,6 +30,9 @@ jobs:
         with:
           dotnet-version: "9.0.x"
 
+      - name: Test
+        run: dotnet test .\AthenaCompanion.sln --configuration Release
+
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
 

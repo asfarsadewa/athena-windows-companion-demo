@@ -789,25 +789,7 @@ internal sealed class SpriteAtlas
             throw new InvalidOperationException("Sprite atlas contains no frames.");
         }
 
-        var count = Math.Min(clip.FrameCount, Math.Max(1, _frames.Count - clip.StartFrame));
-        var localFrame = (int)Math.Floor(Math.Max(0, clipSeconds) * clip.FramesPerSecond);
-
-        if (clip.PingPong && count > 1)
-        {
-            var period = count * 2 - 2;
-            localFrame %= period;
-            if (localFrame >= count)
-            {
-                localFrame = period - localFrame;
-            }
-        }
-        else
-        {
-            localFrame %= count;
-        }
-
-        var frameIndex = Math.Clamp(clip.StartFrame + localFrame, 0, _frames.Count - 1);
-        return _frames[frameIndex];
+        return _frames[AnimationFrameSelector.SelectFrameIndex(clip, clipSeconds, _frames.Count)];
     }
 
     private static IReadOnlyList<ImageSource> SliceAtlas(BitmapSource bitmap, SpriteAtlasManifest manifest)
