@@ -66,6 +66,7 @@ public partial class MainWindow : Window
     {
         _voiceController = new AthenaVoiceController(() => _settings.Voice, ShowGeneratedImage);
         InitializeComponent();
+        Icon = LoadWindowIcon();
 
         _timer.Tick += OnTick;
         _voiceController.StatusChanged += OnVoiceStatusChanged;
@@ -654,6 +655,12 @@ public partial class MainWindow : Window
     {
         try
         {
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "Icons", "athena.ico");
+            if (File.Exists(iconPath))
+            {
+                return new System.Drawing.Icon(iconPath);
+            }
+
             var processPath = Environment.ProcessPath;
             return string.IsNullOrWhiteSpace(processPath)
                 ? null
@@ -663,6 +670,22 @@ public partial class MainWindow : Window
         {
             return null;
         }
+    }
+
+    private static ImageSource? LoadWindowIcon()
+    {
+        using var icon = LoadTrayIcon();
+        if (icon is null)
+        {
+            return null;
+        }
+
+        var source = Imaging.CreateBitmapSourceFromHIcon(
+            icon.Handle,
+            Int32Rect.Empty,
+            BitmapSizeOptions.FromEmptyOptions());
+        source.Freeze();
+        return source;
     }
 
     private void ApplyClickThroughStyle(bool enabled)
