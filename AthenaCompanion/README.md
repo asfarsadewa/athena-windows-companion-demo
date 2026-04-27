@@ -2,6 +2,21 @@
 
 Transparent WPF desktop companion window for Windows. Athena walks just above the primary taskbar, pauses for pose animation, and exposes a tray menu for pause, click-through, and exit.
 
+Left-click Athena to toggle her pause pose. Right-click her to open the tray menu.
+
+## Voice Agent Plan
+
+Voice support is implemented as a first local Realtime pass. Athena ships with no OpenAI API key; users provide their own key during setup, and the app stores it in Windows Credential Manager. Local development can continue to use the `OPENAI_API_KEY` environment variable.
+
+Athena only listens while she is paused. Walking mode stops microphone capture and closes the Realtime session. See [docs/voice-agent-plan.md](docs/voice-agent-plan.md) for the implementation plan and privacy boundary.
+
+Voice behavior:
+
+- left-click Athena to pause and start voice mode
+- left-click again to resume walking and stop voice mode
+- right-click for the menu, including voice status and API key setup
+- first voice use asks for an API key if neither Credential Manager nor `OPENAI_API_KEY` has one
+
 ## Run
 
 ```powershell

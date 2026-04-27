@@ -16,6 +16,7 @@
         WindowStyle="None"
         Loaded="OnLoaded"
         Closed="OnClosed"
+        MouseLeftButtonUp="OnMouseLeftButtonUp"
         MouseRightButtonUp="OnMouseRightButtonUp">
     <Grid x:Name="Root"
           Background="Transparent"

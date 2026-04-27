@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using AthenaCompanion.Voice;
 using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Interop;
@@ -25,10 +26,13 @@ public partial class MainWindow : Window
     private readonly Stopwatch _clock = new();
     private readonly Random _random = new();
     private readonly SpriteAtlas _atlas = SpriteAtlas.Load();
+    private readonly AthenaVoiceController _voiceController = new();
 
     private WinForms.NotifyIcon? _notifyIcon;
     private WinForms.ToolStripMenuItem? _pauseMenuItem;
     private WinForms.ToolStripMenuItem? _clickThroughMenuItem;
+    private WinForms.ToolStripMenuItem? _voiceStatusMenuItem;
+    private WinForms.ToolStripMenuItem? _removeApiKeyMenuItem;
 
     private BehaviorMode _mode = BehaviorMode.Walk;
     private double _lastSeconds;
@@ -42,12 +46,15 @@ public partial class MainWindow : Window
     private int _direction = 1;
     private bool _movementPaused;
     private bool _clickThrough;
+    private string _voiceStatus = "Voice off";
 
     public MainWindow()
     {
         InitializeComponent();
 
         _timer.Tick += OnTick;
+        _voiceController.StatusChanged += OnVoiceStatusChanged;
+        _voiceController.Error += OnVoiceError;
         _nextPoseSeconds = RandomRange(8, 18);
         SystemEvents.DisplaySettingsChanged += OnDisplaySettingsChanged;
     }
@@ -66,6 +73,9 @@ public partial class MainWindow : Window
     {
         _timer.Stop();
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+        _voiceController.StatusChanged -= OnVoiceStatusChanged;
+        _voiceController.Error -= OnVoiceError;
+        _ = _voiceController.DisposeAsync();
 
         if (_notifyIcon is not null)
         {
@@ -78,6 +88,17 @@ public partial class MainWindow : Window
     private void OnMouseRightButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
         _notifyIcon?.ContextMenuStrip?.Show(WinForms.Cursor.Position);
+    }
+
+    private void OnMouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (_clickThrough)
+        {
+            return;
+        }
+
+        TogglePause();
+        e.Handled = true;
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
@@ -203,12 +224,32 @@ public partial class MainWindow : Window
         _clickThroughMenuItem = new WinForms.ToolStripMenuItem("Click-through");
         _clickThroughMenuItem.Click += (_, _) => ToggleClickThrough();
 
+        _voiceStatusMenuItem = new WinForms.ToolStripMenuItem("Voice off") { Enabled = false };
+
+        var configureApiKeyMenuItem = new WinForms.ToolStripMenuItem("OpenAI API Key...");
+        configureApiKeyMenuItem.Click += (_, _) =>
+        {
+            _voiceController.ConfigureApiKey(this);
+            UpdateMenuState();
+        };
+
+        _removeApiKeyMenuItem = new WinForms.ToolStripMenuItem("Remove saved OpenAI API Key");
+        _removeApiKeyMenuItem.Click += (_, _) =>
+        {
+            _voiceController.RemoveSavedApiKey();
+            UpdateMenuState();
+        };
+
         var exitMenuItem = new WinForms.ToolStripMenuItem("Exit");
         exitMenuItem.Click += (_, _) => Close();
 
         var menu = new WinForms.ContextMenuStrip();
         menu.Items.Add(_pauseMenuItem);
         menu.Items.Add(_clickThroughMenuItem);
+        menu.Items.Add(new WinForms.ToolStripSeparator());
+        menu.Items.Add(_voiceStatusMenuItem);
+        menu.Items.Add(configureApiKeyMenuItem);
+        menu.Items.Add(_removeApiKeyMenuItem);
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add(exitMenuItem);
 
@@ -229,7 +270,13 @@ public partial class MainWindow : Window
         _movementPaused = !_movementPaused;
         if (!_movementPaused)
         {
+            StopVoiceMode();
             EnterWalk(_clock.Elapsed.TotalSeconds);
+        }
+        else
+        {
+            EnterPose(_clock.Elapsed.TotalSeconds, brief: false);
+            StartVoiceMode();
         }
 
         UpdateMenuState();
@@ -254,6 +301,46 @@ public partial class MainWindow : Window
         {
             _clickThroughMenuItem.Checked = _clickThrough;
         }
+
+        if (_voiceStatusMenuItem is not null)
+        {
+            var keyStatus = _voiceController.GetKeyStatus();
+            _voiceStatusMenuItem.Text = $"Voice: {_voiceStatus} ({keyStatus})";
+        }
+
+        if (_removeApiKeyMenuItem is not null)
+        {
+            _removeApiKeyMenuItem.Enabled = _voiceController.GetKeyStatus() == "Credential Manager";
+        }
+    }
+
+    private async void StartVoiceMode()
+    {
+        await _voiceController.StartAsync(this);
+    }
+
+    private async void StopVoiceMode()
+    {
+        await _voiceController.StopAsync();
+    }
+
+    private void OnVoiceStatusChanged(object? sender, string status)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _voiceStatus = status;
+            UpdateMenuState();
+        });
+    }
+
+    private void OnVoiceError(object? sender, string error)
+    {
+        Dispatcher.Invoke(() =>
+        {
+            _voiceStatus = "Voice error";
+            UpdateMenuState();
+            _notifyIcon?.ShowBalloonTip(4000, "Athena Voice", error, WinForms.ToolTipIcon.Warning);
+        });
     }
 
     private void ApplyClickThroughStyle(bool enabled)
