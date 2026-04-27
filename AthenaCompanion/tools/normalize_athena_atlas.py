@@ -18,6 +18,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--columns", type=int, default=10)
     parser.add_argument("--rows", type=int, default=4)
     parser.add_argument("--walk-frames", type=int, default=30)
+    parser.add_argument(
+        "--walk-stride",
+        type=int,
+        default=1,
+        help="Use every Nth generated walk frame. Default: 1.",
+    )
     parser.add_argument("--pose-frames", type=int, default=9)
     parser.add_argument("--alpha-threshold", type=int, default=16)
     parser.add_argument("--padding", type=int, default=6)
@@ -122,6 +128,9 @@ def write_preview(atlas: Image.Image, path: Path, cell_size: int) -> None:
 
 def main() -> None:
     args = parse_args()
+    if args.walk_stride < 1:
+        raise SystemExit("--walk-stride must be at least 1.")
+
     source = Image.open(args.input).convert("RGBA")
     extracted = extract_frames(source, args.alpha_threshold)
     expected = args.walk_frames + args.pose_frames
@@ -131,7 +140,17 @@ def main() -> None:
             f"Expected at least {expected} frames, but only extracted {len(extracted)}."
         )
 
-    selected = extracted[:expected]
+    source_walk = extracted[: args.walk_frames]
+    source_pose = extracted[args.walk_frames : expected]
+    selected_walk = source_walk[:: args.walk_stride]
+    selected = selected_walk + source_pose
+
+    if len(selected) > args.columns * args.rows:
+        raise SystemExit(
+            f"Selected {len(selected)} frames, but atlas only has "
+            f"{args.columns * args.rows} cells."
+        )
+
     atlas = normalize_frames(
         selected,
         columns=args.columns,
@@ -148,7 +167,8 @@ def main() -> None:
         write_preview(atlas, Path(args.preview), args.cell_size)
 
     print(
-        f"extracted={len(extracted)} selected={len(selected)} "
+        f"extracted={len(extracted)} walk={len(selected_walk)} pose={len(source_pose)} "
+        f"selected={len(selected)} "
         f"output={out} size={atlas.size}"
     )
 

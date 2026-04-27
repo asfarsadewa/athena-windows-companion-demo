@@ -2,4 +2,4 @@
 **/obj/
 **/.venv/
 **/tmp/
-**/output/imagegen/*.png
+**/output/

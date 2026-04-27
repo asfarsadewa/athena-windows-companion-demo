@@ -18,6 +18,9 @@ namespace AthenaCompanion;
 
 public partial class MainWindow : Window
 {
+    private const double MinWalkSpeed = 34;
+    private const double MaxWalkSpeed = 46;
+
     private readonly DispatcherTimer _timer = new() { Interval = TimeSpan.FromMilliseconds(16) };
     private readonly Stopwatch _clock = new();
     private readonly Random _random = new();
@@ -53,7 +56,7 @@ public partial class MainWindow : Window
     {
         ConfigureTrayMenu();
         RefreshTrackBounds(resetPosition: true);
-        _walkSpeed = RandomRange(46, 68);
+        _walkSpeed = RandomRange(MinWalkSpeed, MaxWalkSpeed);
         _clock.Start();
         _lastSeconds = _clock.Elapsed.TotalSeconds;
         _timer.Start();
@@ -148,7 +151,7 @@ public partial class MainWindow : Window
     {
         _mode = BehaviorMode.Walk;
         _modeStartedSeconds = now;
-        _walkSpeed = RandomRange(46, 68);
+        _walkSpeed = RandomRange(MinWalkSpeed, MaxWalkSpeed);
         _nextPoseSeconds = now + RandomRange(8, 18);
     }
 

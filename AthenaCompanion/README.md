@@ -18,11 +18,11 @@ Assets\Sprites\athena-atlas.png
 
 Expected atlas format:
 
-- 2560x1024 PNG
-- 10 columns by 4 rows
+- 2048x768 PNG
+- 8 columns by 3 rows
 - 256x256 cells
-- frames 1-30: right-facing walk cycle
-- frames 31-39: idle/pose loop
+- frames 1-15: right-facing walk cycle, curated from every other generated walk frame
+- frames 16-24: idle/pose loop
 - transparent background after chroma-key cleanup
 - metadata: `Assets\Sprites\athena-atlas.json`
 
@@ -79,8 +79,9 @@ python 'tools\normalize_athena_atlas.py' `
   --input 'output\imagegen\athena-atlas-transparent-layout.png' `
   --out 'Assets\Sprites\athena-atlas.png' `
   --preview 'output\imagegen\athena-atlas-normalized-preview.png' `
-  --columns 10 `
-  --rows 4 `
+  --columns 8 `
+  --rows 3 `
   --walk-frames 30 `
+  --walk-stride 2 `
   --pose-frames 9
 ```
