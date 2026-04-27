@@ -4,3 +4,17 @@
 **/tmp/
 **/output/
 artifacts/
+
+# Visual Studio / Rider
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+# Test output
+[Tt]est[Rr]esults/
+
+# Inno Setup output (already covered by artifacts/, but explicit)
+installer/Output/
