@@ -8,6 +8,7 @@ using AthenaCompanion.TextChat;
 using AthenaCompanion.Tools;
 using AthenaCompanion.UI;
 using AthenaCompanion.Voice;
+using AthenaCompanion.Music;
 using Microsoft.Win32;
 using System.Windows;
 using System.Windows.Interop;
@@ -41,6 +42,7 @@ public partial class MainWindow : Window
     private WinForms.ToolStripMenuItem? _pauseMenuItem;
     private WinForms.ToolStripMenuItem? _clickThroughMenuItem;
     private WinForms.ToolStripMenuItem? _textChatMenuItem;
+    private WinForms.ToolStripMenuItem? _musicMenuItem;
     private WinForms.ToolStripMenuItem? _voiceStatusMenuItem;
     private WinForms.ToolStripMenuItem? _voiceMenuItem;
     private WinForms.ToolStripMenuItem? _removeApiKeyMenuItem;
@@ -61,12 +63,14 @@ public partial class MainWindow : Window
     private string _voiceStatus = "Voice off";
     private string _busyIndicatorLabel = "Thinking";
     private TextChatWindow? _textChatWindow;
+    private MusicPlayerWindow? _musicPlayerWindow;
 
     private bool IsInteractionPaused => _interactionMode != AthenaInteractionMode.None;
 
     public MainWindow()
     {
-        _voiceController = new AthenaVoiceController(() => _settings.Voice, ShowGeneratedImage);
+        EnsureMusicDirectory();
+        _voiceController = new AthenaVoiceController(() => _settings.Voice, ShowGeneratedImage, OpenMusicPlayerFromTool);
         InitializeComponent();
         Icon = LoadWindowIcon();
         _ambientSoundPlayer = AmbientSoundPlayer.Load(AppContext.BaseDirectory);
@@ -98,6 +102,7 @@ public partial class MainWindow : Window
         _voiceController.Error -= OnVoiceError;
         _ = _voiceController.DisposeAsync();
         CloseTextChatWindow();
+        CloseMusicPlayerWindow();
         _ambientSoundPlayer.Dispose();
 
         if (_notifyIcon is not null)
@@ -120,6 +125,12 @@ public partial class MainWindow : Window
     {
         if (_clickThrough)
         {
+            return;
+        }
+
+        if (IsModeBubbleClick(e.OriginalSource))
+        {
+            e.Handled = true;
             return;
         }
 
@@ -147,6 +158,26 @@ public partial class MainWindow : Window
 
         TogglePause();
         e.Handled = true;
+    }
+
+    private bool IsModeBubbleClick(object? source) =>
+        IsDescendantOf(TextModeBubble, source) ||
+        IsDescendantOf(VoiceModeBubble, source);
+
+    private static bool IsDescendantOf(DependencyObject parent, object? source)
+    {
+        var current = source as DependencyObject;
+        while (current is not null)
+        {
+            if (ReferenceEquals(current, parent))
+            {
+                return true;
+            }
+
+            current = VisualTreeHelper.GetParent(current);
+        }
+
+        return false;
     }
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
@@ -277,6 +308,9 @@ public partial class MainWindow : Window
         _textChatMenuItem = new WinForms.ToolStripMenuItem("Text chat");
         _textChatMenuItem.Click += (_, _) => ToggleTextMode();
 
+        _musicMenuItem = new WinForms.ToolStripMenuItem("Music player");
+        _musicMenuItem.Click += (_, _) => ToggleMusicMode();
+
         _voiceStatusMenuItem = new WinForms.ToolStripMenuItem("Voice off") { Enabled = false };
         _voiceMenuItem = BuildVoiceMenu();
 
@@ -300,6 +334,7 @@ public partial class MainWindow : Window
         var menu = new WinForms.ContextMenuStrip();
         menu.Items.Add(_pauseMenuItem);
         menu.Items.Add(_textChatMenuItem);
+        menu.Items.Add(_musicMenuItem);
         menu.Items.Add(_clickThroughMenuItem);
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add(_voiceStatusMenuItem);
@@ -350,9 +385,24 @@ public partial class MainWindow : Window
         UpdateMenuState();
     }
 
+    private void ToggleMusicMode()
+    {
+        if (_interactionMode == AthenaInteractionMode.Music)
+        {
+            _musicPlayerWindow?.Activate();
+        }
+        else
+        {
+            EnterMusicMode(MusicPlayerRequest.OpenLibrary);
+        }
+
+        UpdateMenuState();
+    }
+
     private void EnterVoiceMode()
     {
         CloseTextChatWindow();
+        CloseMusicPlayerWindow();
         _interactionMode = AthenaInteractionMode.Voice;
         EnterPose(_clock.Elapsed.TotalSeconds, brief: false);
         UpdateInteractionVisuals();
@@ -363,6 +413,7 @@ public partial class MainWindow : Window
     private void EnterTextMode()
     {
         StopVoiceMode();
+        CloseMusicPlayerWindow();
         _interactionMode = AthenaInteractionMode.Text;
         EnterPose(_clock.Elapsed.TotalSeconds, brief: false);
         UpdateBusyIndicatorState("Text ready");
@@ -371,10 +422,24 @@ public partial class MainWindow : Window
         OpenTextChatWindow();
     }
 
+    private void EnterMusicMode(MusicPlayerRequest request)
+    {
+        StopVoiceMode();
+        CloseTextChatWindow();
+        _interactionMode = AthenaInteractionMode.Music;
+        EnterPose(_clock.Elapsed.TotalSeconds, brief: false);
+        UpdateBusyIndicatorState("Music mode");
+        UpdateInteractionVisuals();
+        UpdateAmbientSoundState();
+        OpenMusicPlayerWindow(request);
+        UpdateMenuState();
+    }
+
     private void ResumeWalking()
     {
         StopVoiceMode();
         CloseTextChatWindow();
+        CloseMusicPlayerWindow();
         _interactionMode = AthenaInteractionMode.None;
         EnterWalk(_clock.Elapsed.TotalSeconds);
         UpdateBusyIndicatorState("Ready");
@@ -442,6 +507,12 @@ public partial class MainWindow : Window
             _textChatMenuItem.Text = _interactionMode == AthenaInteractionMode.Text ? "Focus text chat" : "Text chat";
         }
 
+        if (_musicMenuItem is not null)
+        {
+            _musicMenuItem.Checked = _interactionMode == AthenaInteractionMode.Music;
+            _musicMenuItem.Text = _interactionMode == AthenaInteractionMode.Music ? "Focus music player" : "Music player";
+        }
+
         if (_clickThroughMenuItem is not null)
         {
             _clickThroughMenuItem.Checked = _clickThrough;
@@ -485,7 +556,7 @@ public partial class MainWindow : Window
         Dispatcher.Invoke(() =>
         {
             _voiceStatus = status;
-            if (_interactionMode != AthenaInteractionMode.Text)
+            if (_interactionMode is not AthenaInteractionMode.Text and not AthenaInteractionMode.Music)
             {
                 UpdateBusyIndicatorState(status);
             }
@@ -538,7 +609,8 @@ public partial class MainWindow : Window
         var tools = new AthenaToolExecutor(
             () => apiKey,
             ShowGeneratedImage,
-            status => Dispatcher.Invoke(() => UpdateBusyIndicatorState(status)));
+            status => Dispatcher.Invoke(() => UpdateBusyIndicatorState(status)),
+            OpenMusicPlayerFromTool);
         var session = new AthenaTextChatSession(apiKey, tools);
         var chatWindow = new TextChatWindow(session)
         {
@@ -565,6 +637,43 @@ public partial class MainWindow : Window
         chatWindow.StatusChanged -= OnTextChatStatusChanged;
         chatWindow.Closed -= OnTextChatClosed;
         chatWindow.Close();
+    }
+
+    private void OpenMusicPlayerFromTool(MusicPlayerRequest request) => EnterMusicMode(request);
+
+    private void OpenMusicPlayerWindow(MusicPlayerRequest request)
+    {
+        if (_musicPlayerWindow is not null)
+        {
+            _musicPlayerWindow.ApplyRequest(request);
+            _musicPlayerWindow.Activate();
+            return;
+        }
+
+        var musicWindow = new MusicPlayerWindow(_settings.MusicDirectory)
+        {
+            Owner = this
+        };
+
+        musicWindow.Closed += OnMusicPlayerClosed;
+        PositionTextChatWindow(musicWindow);
+        _musicPlayerWindow = musicWindow;
+        musicWindow.Show();
+        musicWindow.ApplyRequest(request);
+        musicWindow.Activate();
+    }
+
+    private void CloseMusicPlayerWindow()
+    {
+        var musicWindow = _musicPlayerWindow;
+        if (musicWindow is null)
+        {
+            return;
+        }
+
+        _musicPlayerWindow = null;
+        musicWindow.Closed -= OnMusicPlayerClosed;
+        musicWindow.Close();
     }
 
     private string? GetOrPromptOpenAiKey()
@@ -624,6 +733,20 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnMusicPlayerClosed(object? sender, EventArgs e)
+    {
+        if (sender is MusicPlayerWindow musicWindow)
+        {
+            musicWindow.Closed -= OnMusicPlayerClosed;
+        }
+
+        _musicPlayerWindow = null;
+        if (_interactionMode == AthenaInteractionMode.Music)
+        {
+            ResumeWalking();
+        }
+    }
+
     private void UpdateBusyIndicatorState(string status)
     {
         _busyIndicatorLabel = status switch
@@ -634,6 +757,7 @@ public partial class MainWindow : Window
             "Looking at screen" => "Looking",
             "Creating image" => "Drawing",
             "Text ready" => _interactionMode == AthenaInteractionMode.Text ? "Chat" : string.Empty,
+            "Music mode" => _interactionMode == AthenaInteractionMode.Music ? "Music" : string.Empty,
             _ => string.Empty
         };
 
@@ -702,6 +826,20 @@ public partial class MainWindow : Window
         var dotCount = (int)(now * 2.6) % 4;
         VoiceBusyDots.Text = new string('.', dotCount).PadRight(3);
         VoiceBusyIndicator.Opacity = 0.82 + Math.Sin(now * 5.0) * 0.12;
+    }
+
+    private void EnsureMusicDirectory()
+    {
+        try
+        {
+            _settings.EnsureMusicDirectoryExists();
+        }
+        catch
+        {
+            _settings.MusicDirectory = MusicDirectoryDefaults.GetFallback();
+            _settings.EnsureMusicDirectoryExists();
+            _settings.Save();
+        }
     }
 
     private static string ToTitleCase(string value) =>
@@ -795,7 +933,8 @@ internal enum AthenaInteractionMode
 {
     None,
     Voice,
-    Text
+    Text,
+    Music
 }
 
 internal static class WalkingThoughtText

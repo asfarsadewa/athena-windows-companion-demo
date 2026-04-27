@@ -15,7 +15,7 @@ Status: first local implementation in progress. Athena has separate pause modes 
 
 ## Interaction Modes
 
-Athena has three high-level interaction modes:
+Athena has four high-level interaction modes:
 
 - Walking:
   - Athena walks normally above the taskbar.
@@ -33,6 +33,12 @@ Athena has three high-level interaction modes:
   - A compact text chat window opens.
   - Uses `gpt-5.5` through the Responses API.
   - Does not start microphone capture.
+- Music pause:
+  - Triggered by the tray music item or the `open_music_player` tool.
+  - Athena pauses in pose animation.
+  - Any active voice session and microphone capture stop before playback.
+  - A compact local player opens for `%USERPROFILE%\Music\Athena Companion`.
+  - MP3 and M4A files are played through mandatory mono AM/SW radio processing.
 
 The code keeps interaction mode separate from animation mode so a dedicated text-pause sprite clip can be added later without changing the app state model.
 
@@ -80,7 +86,11 @@ Initial implementation should use the OpenAI Realtime API over WebSocket from th
   - Model: `gpt-5.5`
   - Endpoint: Responses API
   - Conversation state: `previous_response_id`
-  - Tool calling: same local `inspect_screen` and `create_screen_image` tools
+  - Tool calling: same local `inspect_screen`, `create_screen_image`, and `open_music_player` tools
+- Music mode:
+  - Tool: `open_music_player`
+  - Directory: user Music folder under `Athena Companion`, with AppData fallback
+  - Voice handoff: visual-only; no spoken follow-up over music
 - Auth source:
   1. Windows Credential Manager
   2. `OPENAI_API_KEY` environment variable for local development

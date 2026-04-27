@@ -1,3 +1,5 @@
+using AthenaCompanion.Music;
+
 namespace AthenaCompanion.Tools;
 
 internal sealed class AthenaToolExecutor
@@ -6,20 +8,31 @@ internal sealed class AthenaToolExecutor
     private readonly Func<string?> _getApiKey;
     private readonly Action<string> _showImage;
     private readonly Action<string> _setStatus;
+    private readonly Action<MusicPlayerRequest>? _openMusicPlayer;
 
-    public AthenaToolExecutor(Func<string?> getApiKey, Action<string> showImage, Action<string> setStatus)
+    public AthenaToolExecutor(
+        Func<string?> getApiKey,
+        Action<string> showImage,
+        Action<string> setStatus,
+        Action<MusicPlayerRequest>? openMusicPlayer = null)
     {
         _getApiKey = getApiKey;
         _showImage = showImage;
         _setStatus = setStatus;
+        _openMusicPlayer = openMusicPlayer;
     }
 
-    public async Task<string> ExecuteAsync(string name, string argumentsJson, CancellationToken cancellationToken)
+    public async Task<AthenaToolResult> ExecuteAsync(string name, string argumentsJson, CancellationToken cancellationToken)
     {
+        if (string.Equals(name, "open_music_player", StringComparison.Ordinal))
+        {
+            return OpenMusicPlayer(argumentsJson);
+        }
+
         var apiKey = _getApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return "I need an OpenAI API key before I can inspect or transform the screen.";
+            return AthenaToolResult.Continue("I need an OpenAI API key before I can inspect or transform the screen.");
         }
 
         try
@@ -28,26 +41,59 @@ internal sealed class AthenaToolExecutor
             {
                 "inspect_screen" => await InspectScreenAsync(apiKey, argumentsJson, cancellationToken),
                 "create_screen_image" => await CreateScreenImageAsync(apiKey, argumentsJson, cancellationToken),
-                _ => $"Unknown tool: {name}"
+                _ => AthenaToolResult.Continue($"Unknown tool: {name}")
             };
         }
         catch (Exception ex)
         {
-            return $"The screen tool failed: {ex.Message}";
+            return AthenaToolResult.Continue($"The screen tool failed: {ex.Message}");
         }
     }
 
-    private async Task<string> InspectScreenAsync(string apiKey, string argumentsJson, CancellationToken cancellationToken)
+    private AthenaToolResult OpenMusicPlayer(string argumentsJson)
+    {
+        if (_openMusicPlayer is null)
+        {
+            return AthenaToolResult.Continue("The music player is unavailable in this context.");
+        }
+
+        try
+        {
+            _setStatus("Music mode");
+            var query = ToolArgumentReader.ReadStringArgument(argumentsJson, "query") ?? string.Empty;
+            var autoplay = ToolArgumentReader.ReadBoolArgument(argumentsJson, "autoplay") ?? !string.IsNullOrWhiteSpace(query);
+            var request = new MusicPlayerRequest(query, autoplay);
+            var dispatcher = System.Windows.Application.Current?.Dispatcher;
+            if (dispatcher is null)
+            {
+                _openMusicPlayer(request);
+            }
+            else
+            {
+                dispatcher.InvokeAsync(
+                    () => _openMusicPlayer(request),
+                    System.Windows.Threading.DispatcherPriority.Background);
+            }
+
+            return AthenaToolResult.StopVoiceWithoutResponse("Opening music mode. Voice mode is stopping while music plays.");
+        }
+        catch (Exception ex)
+        {
+            return AthenaToolResult.Continue($"The music player failed: {ex.Message}");
+        }
+    }
+
+    private async Task<AthenaToolResult> InspectScreenAsync(string apiKey, string argumentsJson, CancellationToken cancellationToken)
     {
         _setStatus("Looking at screen");
         var request = ToolArgumentReader.ReadStringArgument(argumentsJson, "question") ?? "What is on my screen right now?";
         var screenshot = _screenCapture.CapturePrimaryScreenPng();
         var client = new OpenAiToolClient(apiKey);
         var answer = await client.AnalyzeScreenAsync(screenshot, request, cancellationToken);
-        return answer;
+        return AthenaToolResult.Continue(answer);
     }
 
-    private async Task<string> CreateScreenImageAsync(string apiKey, string argumentsJson, CancellationToken cancellationToken)
+    private async Task<AthenaToolResult> CreateScreenImageAsync(string apiKey, string argumentsJson, CancellationToken cancellationToken)
     {
         _setStatus("Creating image");
         var request = ToolArgumentReader.ReadStringArgument(argumentsJson, "prompt") ??
@@ -60,6 +106,6 @@ internal sealed class AthenaToolExecutor
 
         System.Windows.Application.Current.Dispatcher.Invoke(() => _showImage(result.ImagePath));
 
-        return $"Done. I created an image from your screen and opened it in a lightbox. Saved image: {result.ImagePath}";
+        return AthenaToolResult.Continue($"Done. I created an image from your screen and opened it in a lightbox. Saved image: {result.ImagePath}");
     }
 }

@@ -35,6 +35,17 @@ Text chat is a separate pause mode from voice:
 - closing the text chat window resumes walking
 - text mode does not start microphone capture
 
+## Music Mode
+
+Music mode is separate from voice and text:
+
+- open it from Athena's tray menu or by asking Athena to play/open local music
+- the default library folder is `%USERPROFILE%\Music\Athena Companion`
+- Athena creates the folder on first run and scans it recursively for `.mp3` and `.m4a`
+- if the folder is empty, the player shows the exact folder path and how to populate it
+- entering music mode stops Realtime voice and microphone capture before playback begins
+- playback is always converted to mono AM/SW radio quality with bandwidth limiting, hiss, crackle, and subtle instability
+
 ## Run
 
 ```powershell
@@ -46,20 +57,20 @@ dotnet run --project .\AthenaCompanion.csproj
 Build the self-contained Windows installer locally from the repository root:
 
 ```powershell
-.\scripts\build-release.ps1 -Version 0.1.1
+.\scripts\build-release.ps1 -Version 0.1.3
 ```
 
 The installer is written to:
 
 ```text
-artifacts\installer\AthenaCompanionSetup-0.1.1.exe
+artifacts\installer\AthenaCompanionSetup-0.1.3.exe
 ```
 
 GitHub Actions also builds the installer when a `v*` tag is pushed:
 
 ```powershell
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.1.3
+git push origin v0.1.3
 ```
 
 The workflow uploads the installer artifact and attaches it to the GitHub release for the tag.

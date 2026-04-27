@@ -5,7 +5,8 @@ internal static class AthenaToolDefinitions
     public static object[] Create(bool strict) =>
     [
         CreateInspectScreenTool(strict),
-        CreateScreenImageTool(strict)
+        CreateScreenImageTool(strict),
+        CreateOpenMusicPlayerTool(strict)
     ];
 
     private static object CreateInspectScreenTool(bool strict) =>
@@ -91,6 +92,59 @@ internal static class AthenaToolDefinitions
                         }
                     },
                     required = new[] { "prompt" }
+                }
+            };
+
+    private static object CreateOpenMusicPlayerTool(bool strict) =>
+        strict
+            ? new
+            {
+                type = "function",
+                name = "open_music_player",
+                description = "Open Athena's local music player for the configured music directory. Use when the user asks to play, browse, or open their local music. Voice mode stops when this opens.",
+                strict = true,
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new
+                        {
+                            type = "string",
+                            description = "Filename, partial relative path, or a generic request such as 'play music'. Use an empty string to open the library."
+                        },
+                        autoplay = new
+                        {
+                            type = "boolean",
+                            description = "True when the user asked to start playback; false when they only asked to browse/open the player."
+                        }
+                    },
+                    required = new[] { "query", "autoplay" },
+                    additionalProperties = false
+                }
+            }
+            : new
+            {
+                type = "function",
+                name = "open_music_player",
+                description = "Open Athena's local music player for the configured music directory. Use when the user asks to play, browse, or open their local music. Voice mode stops when this opens.",
+                parameters = new
+                {
+                    type = "object",
+                    properties = new
+                    {
+                        query = new
+                        {
+                            type = "string",
+                            description = "Filename, partial relative path, or a generic request such as 'play music'. Use an empty string to open the library."
+                        },
+                        autoplay = new
+                        {
+                            type = "boolean",
+                            description = "True when the user asked to start playback; false when they only asked to browse/open the player."
+                        }
+                    },
+                    required = new[] { "query", "autoplay" }
                 }
             };
 }

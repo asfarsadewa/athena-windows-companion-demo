@@ -1,6 +1,7 @@
 using System.Windows;
 using AthenaCompanion.Security;
 using AthenaCompanion.Settings;
+using AthenaCompanion.Music;
 using AthenaCompanion.Tools;
 
 namespace AthenaCompanion.Voice;
@@ -10,13 +11,15 @@ internal sealed class AthenaVoiceController : IAsyncDisposable
     private readonly OpenAiKeyProvider _keyProvider = new();
     private readonly Func<string> _getVoice;
     private readonly Action<string> _showImage;
+    private readonly Action<MusicPlayerRequest> _openMusicPlayer;
     private AthenaRealtimeSession? _session;
     private bool _starting;
 
-    public AthenaVoiceController(Func<string> getVoice, Action<string> showImage)
+    public AthenaVoiceController(Func<string> getVoice, Action<string> showImage, Action<MusicPlayerRequest> openMusicPlayer)
     {
         _getVoice = getVoice;
         _showImage = showImage;
+        _openMusicPlayer = openMusicPlayer;
     }
 
     public event EventHandler<string>? StatusChanged;
@@ -50,7 +53,8 @@ internal sealed class AthenaVoiceController : IAsyncDisposable
             var tools = new AthenaToolExecutor(
                 () => apiKey,
                 _showImage,
-                status => StatusChanged?.Invoke(this, status));
+                status => StatusChanged?.Invoke(this, status),
+                _openMusicPlayer);
 
             var session = new AthenaRealtimeSession(apiKey, AthenaVoicePrompt.Text, _getVoice(), tools);
             session.StatusChanged += OnSessionStatusChanged;

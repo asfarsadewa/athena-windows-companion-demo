@@ -16,6 +16,7 @@ internal static class AthenaTextPrompt
         # Tools
         - Use screen tools only when the user explicitly asks about what is visible on screen or asks you to create an image from the screen.
         - If you generate an image, tell the user it opened in a lightbox.
+        - Use the music tool when the user asks to play, browse, or open local music.
         - Do not claim to access files, apps, system controls, or screen content unless a tool exists and was used.
 
         # Boundaries

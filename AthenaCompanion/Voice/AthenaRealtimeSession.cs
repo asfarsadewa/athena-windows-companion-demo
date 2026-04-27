@@ -312,14 +312,26 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
 
         StatusChanged?.Invoke(this, "Using tool");
         _audioInputSuspended = true;
-        string output;
+        AthenaToolResult result;
         try
         {
-            output = await _toolExecutor.ExecuteAsync(call.Name, call.Arguments, cancellationToken);
+            result = await _toolExecutor.ExecuteAsync(call.Name, call.Arguments, cancellationToken);
         }
         finally
         {
             _audioInputSuspended = false;
+        }
+
+        if (result.StopVoice)
+        {
+            _audioInputSuspended = true;
+            _audioOutput.Clear();
+            StatusChanged?.Invoke(this, "Music mode");
+        }
+
+        if (!result.ContinueVoiceResponse)
+        {
+            return;
         }
 
         await SendJsonAsync(new
@@ -329,7 +341,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
             {
                 type = "function_call_output",
                 call_id = call.CallId,
-                output
+                output = result.Output
             }
         }, cancellationToken);
 

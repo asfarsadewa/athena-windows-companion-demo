@@ -60,15 +60,22 @@ internal sealed class AthenaTextChatSession : IDisposable
                 {
                     "inspect_screen" => "Looking at screen",
                     "create_screen_image" => "Creating image",
+                    "open_music_player" => "Music mode",
                     _ => "Using tool"
                 });
 
-                var output = await _toolExecutor.ExecuteAsync(call.Name, call.Arguments, cancellationToken);
+                var result = await _toolExecutor.ExecuteAsync(call.Name, call.Arguments, cancellationToken);
+                if (!result.ContinueVoiceResponse)
+                {
+                    StatusChanged?.Invoke(this, "Music mode");
+                    return result.Output;
+                }
+
                 outputs.Add(new
                 {
                     type = "function_call_output",
                     call_id = call.CallId,
-                    output
+                    output = result.Output
                 });
             }
 
