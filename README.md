@@ -2,6 +2,8 @@
 
 Athena is a transparent WPF desktop companion for Windows. She walks above the taskbar, can pause for voice mode, and can open a text chat mode with shared screen and image-generation tools.
 
+![Athena companion demo](videos/athena-demo.gif)
+
 ## Music Mode
 
 Athena can open a compact local music player from voice, text, or the tray menu. Put `.mp3` or `.m4a` files under:
