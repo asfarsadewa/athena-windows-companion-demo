@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private readonly AthenaSettings _settings = AthenaSettings.Load();
     private readonly OpenAiKeyProvider _keyProvider = new();
     private readonly AthenaVoiceController _voiceController;
+    private readonly AmbientSoundPlayer _ambientSoundPlayer;
 
     private WinForms.NotifyIcon? _notifyIcon;
     private System.Drawing.Icon? _trayIcon;
@@ -54,6 +55,7 @@ public partial class MainWindow : Window
     private double _walkSpeed;
     private double _x;
     private int _direction = 1;
+    private int _thoughtVariantIndex = -1;
     private AthenaInteractionMode _interactionMode = AthenaInteractionMode.None;
     private bool _clickThrough;
     private string _voiceStatus = "Voice off";
@@ -67,6 +69,7 @@ public partial class MainWindow : Window
         _voiceController = new AthenaVoiceController(() => _settings.Voice, ShowGeneratedImage);
         InitializeComponent();
         Icon = LoadWindowIcon();
+        _ambientSoundPlayer = AmbientSoundPlayer.Load(AppContext.BaseDirectory);
 
         _timer.Tick += OnTick;
         _voiceController.StatusChanged += OnVoiceStatusChanged;
@@ -83,6 +86,7 @@ public partial class MainWindow : Window
         _walkSpeed = RandomRange(MinWalkSpeed, MaxWalkSpeed);
         _clock.Start();
         _lastSeconds = _clock.Elapsed.TotalSeconds;
+        UpdateAmbientSoundState();
         _timer.Start();
     }
 
@@ -94,6 +98,7 @@ public partial class MainWindow : Window
         _voiceController.Error -= OnVoiceError;
         _ = _voiceController.DisposeAsync();
         CloseTextChatWindow();
+        _ambientSoundPlayer.Dispose();
 
         if (_notifyIcon is not null)
         {
@@ -133,6 +138,17 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    private void OnVoiceModeBubbleMouseLeftButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (_clickThrough)
+        {
+            return;
+        }
+
+        TogglePause();
+        e.Handled = true;
+    }
+
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
         Dispatcher.Invoke(() => RefreshTrackBounds(resetPosition: false));
@@ -158,6 +174,7 @@ public partial class MainWindow : Window
         SpriteImage.RenderTransform = _direction < 0
             ? new ScaleTransform(-1, 1)
             : Transform.Identity;
+        UpdateWalkingThoughtText(now);
         UpdateBusyIndicatorAnimation(now);
     }
 
@@ -339,6 +356,7 @@ public partial class MainWindow : Window
         _interactionMode = AthenaInteractionMode.Voice;
         EnterPose(_clock.Elapsed.TotalSeconds, brief: false);
         UpdateInteractionVisuals();
+        UpdateAmbientSoundState();
         StartVoiceMode();
     }
 
@@ -349,6 +367,7 @@ public partial class MainWindow : Window
         EnterPose(_clock.Elapsed.TotalSeconds, brief: false);
         UpdateBusyIndicatorState("Text ready");
         UpdateInteractionVisuals();
+        UpdateAmbientSoundState();
         OpenTextChatWindow();
     }
 
@@ -360,6 +379,7 @@ public partial class MainWindow : Window
         EnterWalk(_clock.Elapsed.TotalSeconds);
         UpdateBusyIndicatorState("Ready");
         UpdateInteractionVisuals();
+        UpdateAmbientSoundState();
         UpdateMenuState();
     }
 
@@ -629,9 +649,47 @@ public partial class MainWindow : Window
 
     private void UpdateInteractionVisuals()
     {
-        TextModeBubble.Visibility = !_clickThrough && _interactionMode == AthenaInteractionMode.None
+        var showWalkingBubbles = !_clickThrough && _interactionMode == AthenaInteractionMode.None;
+        TextModeBubble.Visibility = showWalkingBubbles
             ? Visibility.Visible
             : Visibility.Collapsed;
+        VoiceModeBubble.Visibility = showWalkingBubbles
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+
+        if (showWalkingBubbles)
+        {
+            UpdateWalkingThoughtText(_clock.Elapsed.TotalSeconds);
+        }
+    }
+
+    private void UpdateWalkingThoughtText(double now)
+    {
+        if (_interactionMode != AthenaInteractionMode.None)
+        {
+            return;
+        }
+
+        var variantIndex = WalkingThoughtText.SelectIndex(now);
+        if (variantIndex == _thoughtVariantIndex)
+        {
+            return;
+        }
+
+        _thoughtVariantIndex = variantIndex;
+        TextModeBubbleText.Text = WalkingThoughtText.Variants[variantIndex];
+    }
+
+    private void UpdateAmbientSoundState()
+    {
+        if (_interactionMode == AthenaInteractionMode.None)
+        {
+            _ambientSoundPlayer.Play();
+        }
+        else
+        {
+            _ambientSoundPlayer.Pause();
+        }
     }
 
     private void UpdateBusyIndicatorAnimation(double now)
@@ -738,6 +796,119 @@ internal enum AthenaInteractionMode
     None,
     Voice,
     Text
+}
+
+internal static class WalkingThoughtText
+{
+    private static readonly string[] VariantValues = ["Hmm ...", "Ah ...", "...", ". . . ."];
+
+    public static IReadOnlyList<string> Variants => VariantValues;
+
+    public static int SelectIndex(double elapsedSeconds)
+    {
+        var safeSeconds = Math.Max(0, elapsedSeconds);
+        return ((int)(safeSeconds / RotationSeconds)) % VariantValues.Length;
+    }
+
+    private const double RotationSeconds = 4.0;
+}
+
+internal sealed class AmbientSoundPlayer : IDisposable
+{
+    private const string AmbientSoundFileName = "on-a-day-like-today.mp3";
+    private readonly MediaPlayer? _player;
+    private bool _shouldPlay;
+
+    private AmbientSoundPlayer(MediaPlayer? player)
+    {
+        _player = player;
+    }
+
+    public static AmbientSoundPlayer Load(string baseDirectory)
+    {
+        var path = Path.Combine(baseDirectory, "Assets", "Sounds", AmbientSoundFileName);
+        if (!File.Exists(path))
+        {
+            return new AmbientSoundPlayer(null);
+        }
+
+        try
+        {
+            var player = new MediaPlayer
+            {
+                Volume = 0.16
+            };
+            var sound = new AmbientSoundPlayer(player);
+            player.MediaEnded += sound.OnMediaEnded;
+            player.MediaFailed += sound.OnMediaFailed;
+            player.Open(new Uri(path, UriKind.Absolute));
+            return sound;
+        }
+        catch
+        {
+            return new AmbientSoundPlayer(null);
+        }
+    }
+
+    public void Play()
+    {
+        if (_player is null)
+        {
+            return;
+        }
+
+        _shouldPlay = true;
+        try
+        {
+            _player.Play();
+        }
+        catch
+        {
+            _shouldPlay = false;
+        }
+    }
+
+    public void Pause()
+    {
+        _shouldPlay = false;
+        try
+        {
+            _player?.Pause();
+        }
+        catch
+        {
+            // Ambient audio should never interrupt Athena's main interaction paths.
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_player is null)
+        {
+            return;
+        }
+
+        _shouldPlay = false;
+        _player.MediaEnded -= OnMediaEnded;
+        _player.MediaFailed -= OnMediaFailed;
+        _player.Close();
+    }
+
+    private void OnMediaEnded(object? sender, EventArgs e)
+    {
+        if (_player is null || !_shouldPlay)
+        {
+            return;
+        }
+
+        _player.Position = TimeSpan.Zero;
+        _player.Play();
+    }
+
+    private void OnMediaFailed(object? sender, ExceptionEventArgs e)
+    {
+        _shouldPlay = false;
+    }
 }
 
 internal sealed record AnimationClip(string Name, int StartFrame, int FrameCount, double FramesPerSecond, bool PingPong);

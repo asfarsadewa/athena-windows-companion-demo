@@ -25,17 +25,48 @@
         <Border x:Name="TextModeBubble"
                 HorizontalAlignment="Right"
                 VerticalAlignment="Top"
-                Margin="0,6,6,0"
+                Margin="0,24,18,0"
                 Padding="10,5"
                 Background="#E8262233"
                 BorderBrush="#B8D9CCFF"
                 BorderThickness="1"
                 CornerRadius="10"
+                Cursor="Hand"
+                ToolTip="Open text chat"
                 MouseLeftButtonUp="OnTextModeBubbleMouseLeftButtonUp">
-            <TextBlock Text="Chat"
+            <TextBlock x:Name="TextModeBubbleText"
+                       Text="Hmm ..."
                        Foreground="#F7F1FF"
                        FontSize="12"
                        FontWeight="SemiBold" />
+        </Border>
+
+        <Border x:Name="VoiceModeBubble"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="18,24,0,0"
+                Padding="8,5"
+                Background="#E8262233"
+                BorderBrush="#B8D9CCFF"
+                BorderThickness="1"
+                CornerRadius="10"
+                Cursor="Hand"
+                ToolTip="Enter voice chat"
+                MouseLeftButtonUp="OnVoiceModeBubbleMouseLeftButtonUp">
+            <Viewbox Width="14"
+                     Height="14"
+                     Stretch="Uniform">
+                <Canvas Width="24"
+                        Height="24">
+                    <Path Data="M12,14 C10.343,14 9,12.657 9,11 L9,5 C9,3.343 10.343,2 12,2 C13.657,2 15,3.343 15,5 L15,11 C15,12.657 13.657,14 12,14 Z M19,10 L19,11 C19,14.866 15.866,18 12,18 C8.134,18 5,14.866 5,11 L5,10 M12,18 L12,22 M8,22 L16,22"
+                          Stroke="#F7F1FF"
+                          StrokeThickness="2"
+                          StrokeStartLineCap="Round"
+                          StrokeEndLineCap="Round"
+                          StrokeLineJoin="Round"
+                          Fill="Transparent" />
+                </Canvas>
+            </Viewbox>
         </Border>
 
         <Border x:Name="VoiceBusyIndicator"

@@ -189,6 +189,28 @@ public sealed class SpriteAtlasManifestTests
     }
 }
 
+public sealed class WalkingThoughtTextTests
+{
+    [Fact]
+    public void VariantsUseApprovedWalkingThoughtLabels()
+    {
+        Assert.Equal(["Hmm ...", "Ah ...", "...", ". . . ."], WalkingThoughtText.Variants);
+        Assert.DoesNotContain(WalkingThoughtText.Variants, variant =>
+            string.Equals(variant, "Chat", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void SelectIndexCyclesThroughVariantsEveryFewSeconds()
+    {
+        Assert.Equal(0, WalkingThoughtText.SelectIndex(-1));
+        Assert.Equal(0, WalkingThoughtText.SelectIndex(3.99));
+        Assert.Equal(1, WalkingThoughtText.SelectIndex(4));
+        Assert.Equal(2, WalkingThoughtText.SelectIndex(8));
+        Assert.Equal(3, WalkingThoughtText.SelectIndex(12));
+        Assert.Equal(0, WalkingThoughtText.SelectIndex(16));
+    }
+}
+
 public sealed class ToolArgumentReaderTests
 {
     [Fact]
