@@ -1,0 +1,13 @@
+Use case: stylized-concept
+Asset type: 2D Windows desktop companion sprite atlas
+Primary request: Create a production-ready sprite atlas for Athena, an adult 90s anime OVA-style woman with long purple hair and elegant white robes, beautiful and slightly teasing but non-explicit.
+Sheet layout: exactly 10 columns by 4 rows, 40 equal animation cells total, no visible grid lines, no labels, no text.
+Frame content: frames 1-30 are a smooth right-facing walk cycle with small graceful steps, robe and hair motion, consistent height and silhouette, bottom-center aligned in every cell; frames 31-40 are an idle pause and pretty pose loop with gentle breathing, hair sway, robe flutter, and a confident playful smile.
+Subject: same adult character in every frame, full body visible, long purple hair, white flowing robes, delicate anime face, elegant posture, readable at small desktop-companion size.
+Style/medium: clean 2D anime game sprite, 90s OVA influence, crisp inked shapes, soft cel shading, production asset tone rather than poster art.
+Composition/framing: one character per cell, centered horizontally, feet on the same baseline, generous transparent-ready padding around hair and robes, facing right for all walking frames.
+Lighting/mood: soft studio-neutral lighting, graceful and charming.
+Color palette: purple hair, white robes, subtle pale lavender shadows, natural skin tones; do not use pure chroma green in the character.
+Background: perfectly flat solid #00ff00 chroma-key background across the entire canvas for local background removal.
+Constraints: output must be a single atlas image; exact 10x4 slot layout; consistent proportions, costume, palette, face, hair length, robe shape, and baseline across all frames; no scenery, no shadows, no contact shadow, no floor plane, no watermark, no text, no borders, no grid, no duplicate poster composition.
+Avoid: childlike appearance, explicit nudity, logos, extra characters, props, background scenery, camera angle changes, extreme foreshortening, cropped body parts, inconsistent hair or costume, green pixels in the character.

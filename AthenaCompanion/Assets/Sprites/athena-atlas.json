@@ -1,0 +1,13 @@
+{
+  "atlas": "athena-atlas.png",
+  "columns": 10,
+  "rows": 4,
+  "frameWidth": 256,
+  "frameHeight": 256,
+  "walkStartFrame": 0,
+  "walkFrameCount": 30,
+  "walkFramesPerSecond": 30,
+  "poseStartFrame": 30,
+  "poseFrameCount": 9,
+  "poseFramesPerSecond": 8
+}

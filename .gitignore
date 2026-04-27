@@ -1,0 +1,5 @@
+**/bin/
+**/obj/
+**/.venv/
+**/tmp/
+**/output/imagegen/*.png
