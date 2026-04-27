@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private readonly AthenaVoiceController _voiceController;
 
     private WinForms.NotifyIcon? _notifyIcon;
+    private System.Drawing.Icon? _trayIcon;
     private WinForms.ToolStripMenuItem? _pauseMenuItem;
     private WinForms.ToolStripMenuItem? _clickThroughMenuItem;
     private WinForms.ToolStripMenuItem? _textChatMenuItem;
@@ -99,6 +100,9 @@ public partial class MainWindow : Window
             _notifyIcon.Dispose();
             _notifyIcon = null;
         }
+
+        _trayIcon?.Dispose();
+        _trayIcon = null;
     }
 
     private void OnMouseRightButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
@@ -287,10 +291,11 @@ public partial class MainWindow : Window
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add(exitMenuItem);
 
+        _trayIcon = LoadTrayIcon();
         _notifyIcon = new WinForms.NotifyIcon
         {
             ContextMenuStrip = menu,
-            Icon = System.Drawing.SystemIcons.Application,
+            Icon = _trayIcon ?? System.Drawing.SystemIcons.Application,
             Text = "Athena Companion",
             Visible = true
         };
@@ -644,6 +649,21 @@ public partial class MainWindow : Window
         string.IsNullOrWhiteSpace(value)
             ? value
             : char.ToUpperInvariant(value[0]) + value[1..];
+
+    private static System.Drawing.Icon? LoadTrayIcon()
+    {
+        try
+        {
+            var processPath = Environment.ProcessPath;
+            return string.IsNullOrWhiteSpace(processPath)
+                ? null
+                : System.Drawing.Icon.ExtractAssociatedIcon(processPath);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     private void ApplyClickThroughStyle(bool enabled)
     {

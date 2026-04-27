@@ -5,6 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         mc:Ignorable="d"
         Title="Athena Companion"
+        Icon="Assets/Icons/athena.ico"
         Width="190"
         Height="176"
         AllowsTransparency="True"

@@ -1,0 +1,12 @@
+Use case: logo-brand
+Asset type: Windows desktop application icon
+Primary request: Create a polished square app icon for "Athena", a Windows desktop companion.
+Subject: Athena as a graceful 90s anime OVA-inspired young woman, long flowing purple hair, elegant white robes, confident gentle expression.
+Style/medium: high-quality painted anime app icon, clean silhouette, simplified enough to read at small sizes, premium desktop software icon.
+Composition/framing: centered head-and-shoulders portrait inside a subtle circular moonlike medallion, generous padding, no cropping, no full body.
+Lighting/mood: soft luminous rim light, calm magical desktop-companion mood, refined rather than noisy.
+Color palette: purple hair, white robes, deep midnight-violet background, small silver/lavender accents.
+Materials/textures: soft painterly hair, crisp robe folds, smooth icon-grade background, subtle bevel on the medallion.
+Text (verbatim): none.
+Constraints: square 1024x1024 composition; no letters, no words, no watermark, no logo text; no tiny details that disappear at 32px; no transparency requirement; no sexualized pose.
+Avoid: cluttered background, extra characters, weapons, helmets, overly realistic face, chibi style, harsh neon, corporate generic avatar.

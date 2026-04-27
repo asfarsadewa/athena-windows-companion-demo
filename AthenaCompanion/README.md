@@ -41,6 +41,43 @@ Text chat is a separate pause mode from voice:
 dotnet run --project .\AthenaCompanion.csproj
 ```
 
+## Release
+
+Build the self-contained Windows installer locally from the repository root:
+
+```powershell
+.\scripts\build-release.ps1 -Version 0.1.0
+```
+
+The installer is written to:
+
+```text
+artifacts\installer\AthenaCompanionSetup-0.1.0.exe
+```
+
+GitHub Actions also builds the installer when a `v*` tag is pushed:
+
+```powershell
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow uploads the installer artifact and attaches it to the GitHub release for the tag.
+
+## App Icon
+
+The generated Athena app icon lives at:
+
+```text
+Assets\Icons\athena.ico
+```
+
+The `gpt-image-2` source prompt is saved at:
+
+```text
+Assets\Icons\athena-icon.prompt.txt
+```
+
 ## Sprite Atlas
 
 The runtime looks for this generated atlas:
