@@ -34,6 +34,7 @@ public partial class MainWindow : Window
     private string _busyIndicatorLabel = "Thinking";
     private TextChatWindow? _textChatWindow;
     private MusicPlayerWindow? _musicPlayerWindow;
+    private OnboardingWindow? _onboardingWindow;
 
     private bool IsInteractionPaused => _interactionMode != AthenaInteractionMode.None;
 
@@ -54,6 +55,7 @@ public partial class MainWindow : Window
         _tray.VoiceChanged += (_, voice) => ChangeVoice(voice);
         _tray.ConfigureApiKeyRequested += OnConfigureApiKeyRequested;
         _tray.RemoveApiKeyRequested += OnRemoveApiKeyRequested;
+        _tray.OnboardingRequested += OnOnboardingRequested;
         _tray.ExitRequested += (_, _) => Close();
 
         InitializeComponent();
@@ -75,6 +77,7 @@ public partial class MainWindow : Window
         _lastSeconds = _clock.Elapsed.TotalSeconds;
         UpdateAmbientSoundState();
         _timer.Start();
+        ShowFirstRunOnboardingIfNeeded();
     }
 
     private void OnClosed(object? sender, EventArgs e)
@@ -315,6 +318,8 @@ public partial class MainWindow : Window
         _tray.Refresh();
     }
 
+    private void OnOnboardingRequested(object? sender, EventArgs e) => ShowOnboarding(markCompleted: false);
+
     private async void StartVoiceMode()
     {
         await _voiceController.StartAsync(this);
@@ -467,6 +472,51 @@ public partial class MainWindow : Window
         _keyProvider.SaveApiKey(dialog.ApiKey);
         _tray.Refresh();
         return dialog.ApiKey;
+    }
+
+    private void ShowFirstRunOnboardingIfNeeded()
+    {
+        if (_settings.HasCompletedOnboarding)
+        {
+            return;
+        }
+
+        ShowOnboarding(markCompleted: true);
+    }
+
+    private void ShowOnboarding(bool markCompleted)
+    {
+        if (_onboardingWindow is not null)
+        {
+            _onboardingWindow.Activate();
+            return;
+        }
+
+        var onboardingWindow = new OnboardingWindow(_settings.MusicDirectory, owner =>
+        {
+            _voiceController.ConfigureApiKey(owner);
+            _tray.Refresh();
+        })
+        {
+            Owner = this
+        };
+
+        _onboardingWindow = onboardingWindow;
+        try
+        {
+            onboardingWindow.ShowDialog();
+        }
+        finally
+        {
+            _onboardingWindow = null;
+            if (markCompleted)
+            {
+                _settings.HasCompletedOnboarding = true;
+                _settings.Save();
+            }
+
+            _tray.Refresh();
+        }
     }
 
     private void PositionChildWindow(Window childWindow)

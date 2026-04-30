@@ -46,6 +46,7 @@ public sealed class AthenaSettingsTests
         var settings = AthenaSettings.LoadFromPath(path);
 
         Assert.Equal(RealtimeVoiceOptions.Default, settings.Voice);
+        Assert.False(settings.HasCompletedOnboarding);
     }
 
     [Fact]
@@ -58,6 +59,7 @@ public sealed class AthenaSettingsTests
         var settings = AthenaSettings.LoadFromPath(path);
 
         Assert.Equal(RealtimeVoiceOptions.Default, settings.Voice);
+        Assert.False(settings.HasCompletedOnboarding);
     }
 
     [Fact]
@@ -84,6 +86,19 @@ public sealed class AthenaSettingsTests
 
         Assert.True(File.Exists(path));
         Assert.Equal(RealtimeVoiceOptions.Default, saved.Voice);
+    }
+
+    [Fact]
+    public void SaveToPathPreservesCompletedOnboarding()
+    {
+        using var temp = new TempDirectory();
+        var path = Path.Combine(temp.Path, "settings.json");
+        var settings = new AthenaSettings { HasCompletedOnboarding = true };
+
+        settings.SaveToPath(path);
+        var saved = AthenaSettings.LoadFromPath(path);
+
+        Assert.True(saved.HasCompletedOnboarding);
     }
 }
 

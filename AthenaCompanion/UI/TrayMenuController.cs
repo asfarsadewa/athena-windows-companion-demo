@@ -36,6 +36,7 @@ internal sealed class TrayMenuController : IDisposable
     public event EventHandler<string>? VoiceChanged;
     public event EventHandler? ConfigureApiKeyRequested;
     public event EventHandler? RemoveApiKeyRequested;
+    public event EventHandler? OnboardingRequested;
     public event EventHandler? ExitRequested;
 
     public void Initialize()
@@ -66,6 +67,9 @@ internal sealed class TrayMenuController : IDisposable
         _removeApiKeyMenuItem = new WinForms.ToolStripMenuItem("Remove saved OpenAI API Key");
         _removeApiKeyMenuItem.Click += (_, _) => RemoveApiKeyRequested?.Invoke(this, EventArgs.Empty);
 
+        var onboardingMenuItem = new WinForms.ToolStripMenuItem("Onboarding...");
+        onboardingMenuItem.Click += (_, _) => OnboardingRequested?.Invoke(this, EventArgs.Empty);
+
         var exitMenuItem = new WinForms.ToolStripMenuItem("Exit");
         exitMenuItem.Click += (_, _) => ExitRequested?.Invoke(this, EventArgs.Empty);
 
@@ -79,6 +83,7 @@ internal sealed class TrayMenuController : IDisposable
         menu.Items.Add(_voiceMenuItem);
         menu.Items.Add(configureApiKeyMenuItem);
         menu.Items.Add(_removeApiKeyMenuItem);
+        menu.Items.Add(onboardingMenuItem);
         menu.Items.Add(new WinForms.ToolStripSeparator());
         menu.Items.Add(exitMenuItem);
 

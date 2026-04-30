@@ -13,6 +13,7 @@ internal sealed class AthenaSettings
 
     public string Voice { get; set; } = RealtimeVoiceOptions.Default;
     public string MusicDirectory { get; set; } = MusicDirectoryDefaults.GetDefault();
+    public bool HasCompletedOnboarding { get; set; }
 
     public static AthenaSettings Load() => LoadFromPath(SettingsPath);
 
