@@ -1,0 +1,14 @@
+Use case: stylized-concept
+Asset type: 2D Windows desktop companion sprite atlas
+Primary request: Create a production-ready sprite atlas for Athena's small agentic puppy companion, a cute energetic dog that can trot near Athena, idle, sniff, wag its tail, bark, and play-bow.
+Sheet layout: exactly 8 columns by 4 rows, 32 equal animation cells total, no visible grid lines, no labels, no text.
+Frame content: frames 1-18 are a smooth right-facing puppy trot/run cycle with springy paws and tail movement; frames 19-26 are an idle/sniff/tail-wag loop; frames 27-32 are a bark/play-bow loop with open mouth, lifted head, or playful crouch poses.
+Subject: same small puppy in every frame, full body visible, compact readable silhouette, warm golden cream fur with pale lavender collar ribbon that subtly connects it to Athena, bright friendly expression, floppy ears, curled wagging tail.
+Style/medium: clean 2D anime game sprite, 90s OVA influence to match Athena, crisp inked shapes, soft cel shading, production asset tone rather than poster art.
+Composition/framing: one puppy only per cell, centered horizontally, feet on the same baseline, generous transparent-ready padding around ears and tail, facing right for all walking and bark frames.
+Lighting/mood: soft studio-neutral lighting, playful and affectionate, readable at small desktop-companion size.
+Color palette: golden cream fur, slightly darker ear tips, tiny lavender collar accent, dark expressive eyes; do not use pure chroma green in the puppy.
+Background: perfectly flat solid #00ff00 chroma-key background across the entire canvas for local background removal.
+Text (verbatim): none.
+Constraints: output must be a single atlas image; exact 8x4 slot layout; consistent proportions, fur color, collar, face, ear shape, tail shape, and baseline across all frames; no scenery, no shadows, no contact shadow, no floor plane, no watermark, no text, no borders, no grid, no extra animals or characters.
+Avoid: realistic photo style, wolf-like adult dog, aggressive expression, logos, props, background scenery, camera angle changes, extreme foreshortening, cropped paws or tail, inconsistent collar, green pixels in the puppy.

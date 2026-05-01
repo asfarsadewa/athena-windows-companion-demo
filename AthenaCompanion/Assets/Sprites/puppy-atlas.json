@@ -1,0 +1,17 @@
+{
+  "atlas": "puppy-atlas.png",
+  "columns": 8,
+  "rows": 4,
+  "frameWidth": 256,
+  "frameHeight": 256,
+  "walkStartFrame": 0,
+  "walkFrameCount": 18,
+  "walkFramesPerSecond": 12,
+  "poseStartFrame": 18,
+  "poseFrameCount": 8,
+  "poseFramesPerSecond": 7,
+  "barkStartFrame": 26,
+  "barkFrameCount": 6,
+  "barkFramesPerSecond": 9,
+  "barkPingPong": false
+}

@@ -1,6 +1,6 @@
 # Athena Windows Companion Demo
 
-Athena is a transparent WPF desktop companion for Windows. She walks above the taskbar, can pause for voice mode, and can open a text chat mode with shared screen and image-generation tools.
+Athena is a transparent WPF desktop companion for Windows. She walks above the taskbar, can spawn a small autonomous puppy companion, can pause for voice mode, and can open a text chat mode with shared screen and image-generation tools.
 
 ![Athena companion demo](videos/athena-demo.gif)
 
@@ -29,13 +29,13 @@ dotnet test .\AthenaCompanion.sln
 ## Build Installer
 
 ```powershell
-.\scripts\build-release.ps1 -Version 0.1.5
+.\scripts\build-release.ps1 -Version 0.1.6
 ```
 
 The installer is written to:
 
 ```text
-artifacts\installer\AthenaCompanionSetup-0.1.5.exe
+artifacts\installer\AthenaCompanionSetup-0.1.6.exe
 ```
 
 ## GitHub Release
@@ -43,8 +43,8 @@ artifacts\installer\AthenaCompanionSetup-0.1.5.exe
 Push a version tag to build and publish a GitHub release:
 
 ```powershell
-git tag v0.1.5
-git push origin v0.1.5
+git tag v0.1.6
+git push origin v0.1.6
 ```
 
 The release workflow builds the Windows installer and attaches it to the tagged GitHub release.

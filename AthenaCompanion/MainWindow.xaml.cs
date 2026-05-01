@@ -35,6 +35,8 @@ public partial class MainWindow : Window
     private TextChatWindow? _textChatWindow;
     private MusicPlayerWindow? _musicPlayerWindow;
     private OnboardingWindow? _onboardingWindow;
+    private DogCompanionController? _dogController;
+    private DogWindow? _dogWindow;
 
     private bool IsInteractionPaused => _interactionMode != AthenaInteractionMode.None;
 
@@ -89,6 +91,7 @@ public partial class MainWindow : Window
         _ = _voiceController.DisposeAsync();
         CloseTextChatWindow();
         CloseMusicPlayerWindow();
+        CloseDogWindow();
         _ambientSoundPlayer.Dispose();
         _tray.Dispose();
     }
@@ -137,9 +140,21 @@ public partial class MainWindow : Window
         e.Handled = true;
     }
 
+    private void OnPuppyButtonClick(object sender, RoutedEventArgs e)
+    {
+        if (_clickThrough)
+        {
+            return;
+        }
+
+        TogglePuppy();
+        e.Handled = true;
+    }
+
     private bool IsModeBubbleClick(object? source) =>
         IsDescendantOf(TextModeBubble, source) ||
-        IsDescendantOf(VoiceModeBubble, source);
+        IsDescendantOf(VoiceModeBubble, source) ||
+        IsDescendantOf(PuppyButton, source);
 
     private static bool IsDescendantOf(DependencyObject parent, object? source)
     {
@@ -175,6 +190,7 @@ public partial class MainWindow : Window
         SpriteImage.RenderTransform = _walk.Direction < 0
             ? new ScaleTransform(-1, 1)
             : Transform.Identity;
+        UpdateDog(now, dt);
         UpdateWalkingThoughtText(now);
         UpdateBusyIndicatorAnimation(now);
     }
@@ -316,6 +332,87 @@ public partial class MainWindow : Window
     {
         _voiceController.RemoveSavedApiKey();
         _tray.Refresh();
+    }
+
+    private void TogglePuppy()
+    {
+        if (_dogWindow is null)
+        {
+            OpenDogWindow();
+        }
+        else
+        {
+            CloseDogWindow();
+        }
+
+        UpdatePuppyButtonVisual();
+    }
+
+    private void OpenDogWindow()
+    {
+        if (_dogWindow is not null)
+        {
+            _dogWindow.Activate();
+            return;
+        }
+
+        _dogController = new DogCompanionController();
+        var dogWindow = new DogWindow
+        {
+            Owner = this
+        };
+        dogWindow.Closed += OnDogWindowClosed;
+        _dogWindow = dogWindow;
+        dogWindow.Show();
+        UpdateDog(_clock.Elapsed.TotalSeconds, dt: 0);
+    }
+
+    private void CloseDogWindow()
+    {
+        var dogWindow = _dogWindow;
+        if (dogWindow is null)
+        {
+            return;
+        }
+
+        _dogWindow = null;
+        _dogController = null;
+        dogWindow.Closed -= OnDogWindowClosed;
+        dogWindow.Close();
+        UpdatePuppyButtonVisual();
+    }
+
+    private void OnDogWindowClosed(object? sender, EventArgs e)
+    {
+        if (sender is DogWindow dogWindow)
+        {
+            dogWindow.Closed -= OnDogWindowClosed;
+        }
+
+        _dogWindow = null;
+        _dogController = null;
+        UpdatePuppyButtonVisual();
+    }
+
+    private void UpdateDog(double now, double dt)
+    {
+        if (_dogWindow is null || _dogController is null)
+        {
+            return;
+        }
+
+        var workingArea = MonitorGeometry.GetPrimaryWorkingAreaDip(this);
+        var frame = new DogCompanionFrame(
+            Left,
+            Top,
+            ActualWidth > 0 ? ActualWidth : Width,
+            ActualHeight > 0 ? ActualHeight : Height,
+            workingArea.Left,
+            workingArea.Right,
+            _dogWindow.Width,
+            _dogWindow.Height);
+        var snapshot = _dogController.Tick(now, dt, frame);
+        _dogWindow.Render(snapshot, now);
     }
 
     private void OnOnboardingRequested(object? sender, EventArgs e) => ShowOnboarding(markCompleted: false);
@@ -603,11 +700,28 @@ public partial class MainWindow : Window
         VoiceModeBubble.Visibility = showWalkingBubbles
             ? Visibility.Visible
             : Visibility.Collapsed;
+        PuppyButton.Visibility = showWalkingBubbles
+            ? Visibility.Visible
+            : Visibility.Collapsed;
 
         if (showWalkingBubbles)
         {
             UpdateWalkingThoughtText(_clock.Elapsed.TotalSeconds);
         }
+
+        UpdatePuppyButtonVisual();
+    }
+
+    private void UpdatePuppyButtonVisual()
+    {
+        if (PuppyButton is null)
+        {
+            return;
+        }
+
+        var isSpawned = _dogWindow is not null;
+        PuppyButton.Opacity = isSpawned ? 1.0 : 0.82;
+        PuppyButton.ToolTip = isSpawned ? "Dismiss puppy" : "Spawn puppy";
     }
 
     private void UpdateWalkingThoughtText(double now)

@@ -148,16 +148,21 @@ internal sealed class SpriteAtlas
         _frames = frames;
         WalkClip = manifest.CreateWalkClip(_frames.Count);
         PoseClip = manifest.CreatePoseClip(_frames.Count);
+        BarkClip = manifest.CreateBarkClip(_frames.Count);
     }
 
     public AnimationClip WalkClip { get; }
 
     public AnimationClip PoseClip { get; }
 
-    public static SpriteAtlas Load()
+    public AnimationClip? BarkClip { get; }
+
+    public static SpriteAtlas Load() => Load("athena-atlas.json", "athena-atlas.png");
+
+    public static SpriteAtlas Load(string manifestFileName, string defaultAtlasFileName)
     {
         var spriteDirectory = Path.Combine(AppContext.BaseDirectory, "Assets", "Sprites");
-        var manifest = SpriteAtlasManifest.Load(spriteDirectory);
+        var manifest = SpriteAtlasManifest.Load(spriteDirectory, manifestFileName, defaultAtlasFileName);
         var atlasPath = Path.Combine(spriteDirectory, manifest.Atlas);
 
         if (File.Exists(atlasPath))
@@ -277,17 +282,30 @@ internal sealed class SpriteAtlasManifest
     public int PoseStartFrame { get; set; } = 24;
     public int PoseFrameCount { get; set; } = 8;
     public double PoseFramesPerSecond { get; set; } = 8;
+    public int BarkStartFrame { get; set; } = -1;
+    public int BarkFrameCount { get; set; }
+    public double BarkFramesPerSecond { get; set; } = 10;
+    public bool BarkPingPong { get; set; }
 
-    public static SpriteAtlasManifest Load(string spriteDirectory)
+    public static SpriteAtlasManifest Load(string spriteDirectory) =>
+        Load(spriteDirectory, "athena-atlas.json", "athena-atlas.png");
+
+    public static SpriteAtlasManifest Load(string spriteDirectory, string manifestFileName, string defaultAtlasFileName)
     {
-        var path = Path.Combine(spriteDirectory, "athena-atlas.json");
+        var path = Path.Combine(spriteDirectory, manifestFileName);
         if (!File.Exists(path))
         {
-            return new SpriteAtlasManifest();
+            return new SpriteAtlasManifest { Atlas = defaultAtlasFileName };
         }
 
         var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-        var manifest = JsonSerializer.Deserialize<SpriteAtlasManifest>(File.ReadAllText(path), options) ?? new SpriteAtlasManifest();
+        var manifest = JsonSerializer.Deserialize<SpriteAtlasManifest>(File.ReadAllText(path), options) ??
+            new SpriteAtlasManifest { Atlas = defaultAtlasFileName };
+        if (string.IsNullOrWhiteSpace(manifest.Atlas))
+        {
+            manifest.Atlas = defaultAtlasFileName;
+        }
+
         manifest.Normalize();
         return manifest;
     }
@@ -297,6 +315,11 @@ internal sealed class SpriteAtlasManifest
 
     public AnimationClip CreatePoseClip(int frameTotal) =>
         CreateClip("Pose", PoseStartFrame, PoseFrameCount, PoseFramesPerSecond, pingPong: true, frameTotal);
+
+    public AnimationClip? CreateBarkClip(int frameTotal) =>
+        BarkStartFrame < 0 || BarkFrameCount <= 0
+            ? null
+            : CreateClip("Bark", BarkStartFrame, BarkFrameCount, BarkFramesPerSecond, BarkPingPong, frameTotal);
 
     private static AnimationClip CreateClip(
         string name,
@@ -320,5 +343,6 @@ internal sealed class SpriteAtlasManifest
         FrameHeight = Math.Max(1, FrameHeight);
         WalkFrameCount = Math.Max(1, WalkFrameCount);
         PoseFrameCount = Math.Max(1, PoseFrameCount);
+        BarkFrameCount = Math.Max(0, BarkFrameCount);
     }
 }

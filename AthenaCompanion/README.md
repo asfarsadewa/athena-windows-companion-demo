@@ -1,8 +1,8 @@
 # Athena Companion
 
-Transparent WPF desktop companion window for Windows. Athena walks just above the primary taskbar, pauses for pose animation, and exposes a tray menu for pause, text chat, click-through, voice setup, and exit.
+Transparent WPF desktop companion window for Windows. Athena walks just above the primary taskbar, pauses for pose animation, can spawn a small puppy companion, and exposes a tray menu for pause, text chat, click-through, voice setup, and exit.
 
-Left-click Athena to toggle voice pause mode. Click the small `Chat` bubble to open text pause mode. Right-click Athena to open the tray menu.
+Left-click Athena to toggle voice pause mode. Click the small `Chat` bubble to open text pause mode. Click the puppy icon to toggle Athena's autonomous puppy companion. Right-click Athena to open the tray menu.
 
 ## Voice Agent Plan
 
@@ -46,6 +46,21 @@ Music mode is separate from voice and text:
 - entering music mode stops Realtime voice and microphone capture before playback begins
 - playback is always converted to mono AM/SW radio quality with bandwidth limiting, hiss, crackle, and subtle instability
 
+## Puppy Companion
+
+The puppy is a separate transparent click-through WPF window owned by Athena. It is session-only, follows Athena near the taskbar, wanders locally, and shows small bark bubbles without making OpenAI API calls.
+
+Puppy assets live at:
+
+```text
+Assets\Sprites\puppy-atlas.png
+Assets\Sprites\puppy-atlas.json
+Assets\Sprites\puppy-atlas.prompt.txt
+Assets\Icons\puppy-icon.png
+```
+
+Preview GIFs live next to the sprite atlas as `puppy-walk-preview.gif`, `puppy-idle-preview.gif`, and `puppy-bark-preview.gif`.
+
 ## Run
 
 ```powershell
@@ -57,20 +72,20 @@ dotnet run --project .\AthenaCompanion.csproj
 Build the self-contained Windows installer locally from the repository root:
 
 ```powershell
-.\scripts\build-release.ps1 -Version 0.1.5
+.\scripts\build-release.ps1 -Version 0.1.6
 ```
 
 The installer is written to:
 
 ```text
-artifacts\installer\AthenaCompanionSetup-0.1.5.exe
+artifacts\installer\AthenaCompanionSetup-0.1.6.exe
 ```
 
 GitHub Actions also builds the installer when a `v*` tag is pushed:
 
 ```powershell
-git tag v0.1.5
-git push origin v0.1.5
+git tag v0.1.6
+git push origin v0.1.6
 ```
 
 The workflow uploads the installer artifact and attaches it to the GitHub release for the tag.

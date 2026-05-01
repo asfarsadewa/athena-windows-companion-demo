@@ -3,6 +3,7 @@ using AthenaCompanion;
 using AthenaCompanion.Settings;
 using AthenaCompanion.TextChat;
 using AthenaCompanion.Tools;
+using AthenaCompanion.UI;
 using AthenaCompanion.Voice;
 
 namespace AthenaCompanion.Tests;
@@ -177,6 +178,60 @@ public sealed class SpriteAtlasManifestTests
     }
 
     [Fact]
+    public void CreateBarkClipReturnsNullWhenManifestHasNoBarkFrames()
+    {
+        Assert.Null(new SpriteAtlasManifest().CreateBarkClip(frameTotal: 32));
+    }
+
+    [Fact]
+    public void CreateBarkClipUsesConfiguredFrameRange()
+    {
+        var manifest = new SpriteAtlasManifest
+        {
+            BarkStartFrame = 26,
+            BarkFrameCount = 12,
+            BarkFramesPerSecond = 0,
+            BarkPingPong = true
+        };
+
+        var clip = manifest.CreateBarkClip(frameTotal: 32);
+
+        Assert.NotNull(clip);
+        Assert.Equal("Bark", clip.Name);
+        Assert.Equal(26, clip.StartFrame);
+        Assert.Equal(6, clip.FrameCount);
+        Assert.Equal(1, clip.FramesPerSecond);
+        Assert.True(clip.PingPong);
+    }
+
+    [Fact]
+    public void LoadReadsCustomPuppyManifest()
+    {
+        using var temp = new TempDirectory();
+        File.WriteAllText(
+            Path.Combine(temp.Path, "puppy-atlas.json"),
+            """
+            {
+              "atlas": "puppy-atlas.png",
+              "columns": 8,
+              "rows": 4,
+              "barkStartFrame": 26,
+              "barkFrameCount": 6
+            }
+            """);
+
+        var manifest = SpriteAtlasManifest.Load(temp.Path, "puppy-atlas.json", "puppy-atlas.png");
+        var bark = manifest.CreateBarkClip(frameTotal: 32);
+
+        Assert.Equal("puppy-atlas.png", manifest.Atlas);
+        Assert.Equal(8, manifest.Columns);
+        Assert.Equal(4, manifest.Rows);
+        Assert.NotNull(bark);
+        Assert.Equal(26, bark.StartFrame);
+        Assert.Equal(6, bark.FrameCount);
+    }
+
+    [Fact]
     public void LoadNormalizesInvalidManifestDimensions()
     {
         using var temp = new TempDirectory();
@@ -201,6 +256,85 @@ public sealed class SpriteAtlasManifestTests
         Assert.Equal(1, manifest.FrameHeight);
         Assert.Equal(1, manifest.WalkFrameCount);
         Assert.Equal(1, manifest.PoseFrameCount);
+    }
+}
+
+public sealed class DogCompanionControllerTests
+{
+    private static readonly DogCompanionFrame DefaultFrame = new(
+        AthenaLeft: 460,
+        AthenaTop: 700,
+        AthenaWidth: 190,
+        AthenaHeight: 176,
+        WorkAreaLeft: 0,
+        WorkAreaRight: 1200,
+        DogWidth: 130,
+        DogHeight: 116);
+
+    [Fact]
+    public void TickKeepsPuppyNearAthenaAndInsideWorkingArea()
+    {
+        var controller = new DogCompanionController(new Random(8));
+        DogCompanionSnapshot snapshot = default;
+
+        for (var step = 0; step < 300; step++)
+        {
+            var now = step / 10.0;
+            snapshot = controller.Tick(now, dt: 0.1, DefaultFrame);
+        }
+
+        var dogCenter = snapshot.X + DefaultFrame.DogWidth / 2;
+        Assert.InRange(dogCenter, DefaultFrame.AthenaCenterX - 142.01, DefaultFrame.AthenaCenterX + 142.01);
+        Assert.InRange(snapshot.X, DefaultFrame.WorkAreaLeft + 6, DefaultFrame.WorkAreaRight - DefaultFrame.DogWidth - 6);
+        Assert.Equal(DefaultFrame.DogTop, snapshot.Top);
+    }
+
+    [Fact]
+    public void SeededControllersProduceMatchingBehavior()
+    {
+        var first = new DogCompanionController(new Random(12));
+        var second = new DogCompanionController(new Random(12));
+
+        for (var step = 0; step < 120; step++)
+        {
+            var now = step / 12.0;
+            var firstSnapshot = first.Tick(now, dt: 1.0 / 12.0, DefaultFrame);
+            var secondSnapshot = second.Tick(now, dt: 1.0 / 12.0, DefaultFrame);
+
+            Assert.Equal(firstSnapshot.X, secondSnapshot.X, precision: 8);
+            Assert.Equal(firstSnapshot.Top, secondSnapshot.Top, precision: 8);
+            Assert.Equal(firstSnapshot.Direction, secondSnapshot.Direction);
+            Assert.Equal(firstSnapshot.Mode, secondSnapshot.Mode);
+            Assert.Equal(firstSnapshot.BarkText, secondSnapshot.BarkText);
+        }
+    }
+
+    [Fact]
+    public void BarkTextAppearsBrieflyAndThenExpires()
+    {
+        var controller = new DogCompanionController(new Random(3));
+        var sawBark = false;
+        var sawBarkExpire = false;
+
+        for (var step = 0; step < 240; step++)
+        {
+            var now = step / 10.0;
+            var snapshot = controller.Tick(now, dt: 0.1, DefaultFrame);
+
+            if (!string.IsNullOrWhiteSpace(snapshot.BarkText))
+            {
+                sawBark = true;
+                Assert.Contains(snapshot.BarkText, new[] { "woof", "arf", "yip", "ruff" });
+            }
+            else if (sawBark)
+            {
+                sawBarkExpire = true;
+                break;
+            }
+        }
+
+        Assert.True(sawBark);
+        Assert.True(sawBarkExpire);
     }
 }
 
