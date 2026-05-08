@@ -8,7 +8,8 @@ namespace AthenaCompanion.Voice;
 
 internal sealed class AthenaRealtimeSession : IAsyncDisposable
 {
-    private const string Model = "gpt-realtime-1.5";
+    internal const string Model = "gpt-realtime-2";
+    internal const string ReasoningEffort = "low";
     private readonly string _apiKey;
     private readonly string _instructions;
     private readonly string _voice;
@@ -124,14 +125,20 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         _sendLock.Dispose();
     }
 
-    private object CreateSessionUpdate() => new
+    private object CreateSessionUpdate() => CreateSessionUpdatePayload(_instructions, _voice);
+
+    internal static object CreateSessionUpdatePayload(string instructions, string voice) => new
     {
         type = "session.update",
         session = new
         {
             type = "realtime",
             model = Model,
-            instructions = _instructions,
+            instructions,
+            reasoning = new
+            {
+                effort = ReasoningEffort
+            },
             audio = new
             {
                 input = new
@@ -146,7 +153,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                 },
                 output = new
                 {
-                    voice = _voice
+                    voice
                 }
             },
             tools = AthenaToolDefinitions.Create(strict: false),

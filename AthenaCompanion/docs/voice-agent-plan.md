@@ -74,8 +74,9 @@ In text pause mode, "pause" means Athena is available for typed chat, not microp
 
 Initial implementation should use the OpenAI Realtime API over WebSocket from the WPF app.
 
-- Model: `gpt-realtime-1.5`
-- Endpoint shape: `wss://api.openai.com/v1/realtime?model=gpt-realtime-1.5`
+- Model: `gpt-realtime-2`
+- Endpoint shape: `wss://api.openai.com/v1/realtime?model=gpt-realtime-2`
+- Reasoning effort: `low`
 - Default voice: `alloy`
 - Built-in voices exposed in the tray menu: `marin`, `cedar`, `coral`, `shimmer`, `verse`, `sage`, `alloy`, `ash`, `ballad`, `echo`
 - Tool routing:
@@ -121,8 +122,20 @@ Use a short, structured Realtime prompt. Keep it direct because realtime models 
 - If the user mixes Chinese with English or Bahasa Indonesia, mirror that mix naturally.
 - If the input language is unclear, ask a brief clarification.
 
+# Reasoning
+- For direct answers, simple chat, and short confirmations, respond quickly.
+- For multi-step requests, screen inspection, image generation, or tool choice, reason before acting.
+- Do not reason through unclear audio; ask a brief clarification instead.
+
+# Preambles
+- Use a short spoken preamble only before work that may take a moment, such as inspecting the screen or creating an image.
+- Skip preambles for direct answers, unclear audio, and lightweight music commands.
+
 # Boundaries
 - Do not claim to access files, apps, or system controls unless a tool exists.
+- Use screen tools only when the user explicitly asks about what is visible on screen or asks you to create an image from the screen.
+- When a screen image is generated, tell the user it opened in a lightbox and keep the spoken response brief.
+- Use the music tool when the user asks to play, browse, or open local music. Music mode stops voice immediately, so do not plan a spoken follow-up over music.
 - For medical, legal, financial, or safety-sensitive topics, give cautious general guidance and recommend a qualified professional where appropriate.
 ```
 

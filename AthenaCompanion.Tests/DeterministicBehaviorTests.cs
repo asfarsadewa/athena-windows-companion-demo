@@ -37,6 +37,28 @@ public sealed class RealtimeVoiceOptionsTests
     }
 }
 
+public sealed class AthenaRealtimeSessionTests
+{
+    [Fact]
+    public void SessionUpdateUsesRealtimeTwoWithLowReasoningEffort()
+    {
+        var json = JsonSerializer.Serialize(
+            AthenaRealtimeSession.CreateSessionUpdatePayload("test instructions", "marin"));
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+        var session = root.GetProperty("session");
+
+        Assert.Equal("session.update", root.GetProperty("type").GetString());
+        Assert.Equal("realtime", session.GetProperty("type").GetString());
+        Assert.Equal("gpt-realtime-2", session.GetProperty("model").GetString());
+        Assert.Equal("low", session.GetProperty("reasoning").GetProperty("effort").GetString());
+        Assert.Equal("test instructions", session.GetProperty("instructions").GetString());
+        Assert.Equal("marin", session.GetProperty("audio").GetProperty("output").GetProperty("voice").GetString());
+        Assert.Equal("server_vad", session.GetProperty("audio").GetProperty("input").GetProperty("turn_detection").GetProperty("type").GetString());
+        Assert.Equal("auto", session.GetProperty("tool_choice").GetString());
+    }
+}
+
 public sealed class AthenaSettingsTests
 {
     [Fact]
