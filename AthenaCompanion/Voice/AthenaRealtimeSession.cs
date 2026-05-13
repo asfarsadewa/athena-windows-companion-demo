@@ -25,6 +25,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
     private Task? _sendAudioTask;
     private readonly HashSet<string> _handledToolCallIds = [];
     private volatile bool _audioInputSuspended;
+    private volatile bool _responseAudioActive;
     private bool _isSpeaking;
     private bool _started;
 
@@ -162,6 +163,11 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                 },
                 output = new
                 {
+                    format = new
+                    {
+                        type = "audio/pcm",
+                        rate = AthenaAudioInput.SampleRate
+                    },
                     voice
                 }
             },
@@ -172,7 +178,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
 
     private void OnAudioAvailable(object? sender, byte[] audio)
     {
-        if (!_started || _audioInputSuspended || _audioChannel is null)
+        if (!_started || _audioInputSuspended || _responseAudioActive || _audioChannel is null)
         {
             return;
         }
@@ -269,6 +275,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                 StatusChanged?.Invoke(this, "Listening");
                 break;
             case "input_audio_buffer.speech_started":
+                _responseAudioActive = false;
                 _audioOutput.Clear();
                 _isSpeaking = false;
                 StatusChanged?.Invoke(this, "Listening");
@@ -307,13 +314,16 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                     StatusChanged?.Invoke(this, "Speaking");
                 }
 
+                _responseAudioActive = true;
                 AddAudioDelta(root);
                 break;
             case "response.done":
+                _responseAudioActive = false;
                 _isSpeaking = false;
                 StatusChanged?.Invoke(this, "Listening");
                 break;
             case "error":
+                _responseAudioActive = false;
                 Error?.Invoke(this, RealtimeEventParser.ReadError(root));
                 break;
         }
@@ -341,6 +351,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         if (result.StopVoice)
         {
             _audioInputSuspended = true;
+            _responseAudioActive = false;
             _audioOutput.Clear();
             StatusChanged?.Invoke(this, "Music mode");
         }
@@ -380,6 +391,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         }
 
         _audioInputSuspended = true;
+        _responseAudioActive = false;
         _audioChannel?.Writer.TryComplete();
         _cts?.Cancel();
         StatusChanged?.Invoke(this, "Disconnected");

@@ -54,12 +54,15 @@ public sealed class AthenaRealtimeSessionTests
         Assert.Equal("gpt-realtime-2", session.GetProperty("model").GetString());
         Assert.Equal("low", session.GetProperty("reasoning").GetProperty("effort").GetString());
         Assert.Equal("test instructions", session.GetProperty("instructions").GetString());
-        Assert.Equal("marin", session.GetProperty("audio").GetProperty("output").GetProperty("voice").GetString());
         var inputAudio = session.GetProperty("audio").GetProperty("input");
         Assert.Equal("audio/pcm", inputAudio.GetProperty("format").GetProperty("type").GetString());
         Assert.Equal(AthenaAudioInput.SampleRate, inputAudio.GetProperty("format").GetProperty("rate").GetInt32());
         Assert.Equal("far_field", inputAudio.GetProperty("noise_reduction").GetProperty("type").GetString());
         Assert.Equal("server_vad", inputAudio.GetProperty("turn_detection").GetProperty("type").GetString());
+        var outputAudio = session.GetProperty("audio").GetProperty("output");
+        Assert.Equal("audio/pcm", outputAudio.GetProperty("format").GetProperty("type").GetString());
+        Assert.Equal(AthenaAudioInput.SampleRate, outputAudio.GetProperty("format").GetProperty("rate").GetInt32());
+        Assert.Equal("marin", outputAudio.GetProperty("voice").GetString());
         Assert.Equal("auto", session.GetProperty("tool_choice").GetString());
     }
 }
@@ -82,6 +85,43 @@ public sealed class AthenaAudioInputTests
         Assert.Equal(16, provider.WaveFormat.BitsPerSample);
         Assert.True(bytesRead > 0);
         Assert.Equal(0, bytesRead % 2);
+    }
+}
+
+public sealed class AthenaAudioOutputTests
+{
+    [Fact]
+    public void AddAlignedPcm16CarriesOddByteAcrossDeltas()
+    {
+        var buffer = new BufferedWaveProvider(new WaveFormat(AthenaAudioInput.SampleRate, 16, 1))
+        {
+            ReadFully = false
+        };
+
+        var pending = AthenaAudioOutput.AddAlignedPcm16(buffer, [1, 2, 3], null);
+        pending = AthenaAudioOutput.AddAlignedPcm16(buffer, [4, 5], pending);
+        pending = AthenaAudioOutput.AddAlignedPcm16(buffer, [6], pending);
+        var actual = new byte[6];
+        var read = buffer.Read(actual, 0, actual.Length);
+
+        Assert.Null(pending);
+        Assert.Equal(6, read);
+        Assert.Equal([1, 2, 3, 4, 5, 6], actual);
+    }
+
+    [Fact]
+    public void CreatePlaybackProviderResamplesAndExpandsToRenderFormat()
+    {
+        var sourceFormat = new WaveFormat(AthenaAudioInput.SampleRate, 16, 1);
+        var sourceAudio = new byte[sourceFormat.AverageBytesPerSecond / 10];
+        using var sourceStream = new RawSourceWaveStream(sourceAudio, 0, sourceAudio.Length, sourceFormat);
+        var renderFormat = WaveFormat.CreateIeeeFloatWaveFormat(48000, 2);
+
+        var provider = AthenaAudioOutput.CreatePlaybackProvider(sourceStream, renderFormat);
+
+        Assert.Equal(48000, provider.WaveFormat.SampleRate);
+        Assert.Equal(2, provider.WaveFormat.Channels);
+        Assert.Equal(WaveFormatEncoding.IeeeFloat, provider.WaveFormat.Encoding);
     }
 }
 
