@@ -29,13 +29,13 @@ dotnet test .\AthenaCompanion.sln
 ## Build Installer
 
 ```powershell
-.\scripts\build-release.ps1 -Version 0.1.7
+.\scripts\build-release.ps1 -Version 0.1.8
 ```
 
 The installer is written to:
 
 ```text
-artifacts\installer\AthenaCompanionSetup-0.1.7.exe
+artifacts\installer\AthenaCompanionSetup-0.1.8.exe
 ```
 
 ## GitHub Release
@@ -43,8 +43,8 @@ artifacts\installer\AthenaCompanionSetup-0.1.7.exe
 Push a version tag to build and publish a GitHub release:
 
 ```powershell
-git tag v0.1.7
-git push origin v0.1.7
+git tag v0.1.8
+git push origin v0.1.8
 ```
 
 The release workflow builds the Windows installer and attaches it to the tagged GitHub release.
