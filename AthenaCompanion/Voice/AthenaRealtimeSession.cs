@@ -143,12 +143,21 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
             {
                 input = new
                 {
+                    format = new
+                    {
+                        type = "audio/pcm",
+                        rate = AthenaAudioInput.SampleRate
+                    },
+                    noise_reduction = new
+                    {
+                        type = "far_field"
+                    },
                     turn_detection = new
                     {
                         type = "server_vad",
-                        threshold = 0.5,
+                        threshold = 0.45,
                         prefix_padding_ms = 300,
-                        silence_duration_ms = 700
+                        silence_duration_ms = 850
                     }
                 },
                 output = new

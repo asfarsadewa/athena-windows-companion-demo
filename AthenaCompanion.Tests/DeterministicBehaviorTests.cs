@@ -5,6 +5,7 @@ using AthenaCompanion.TextChat;
 using AthenaCompanion.Tools;
 using AthenaCompanion.UI;
 using AthenaCompanion.Voice;
+using NAudio.Wave;
 
 namespace AthenaCompanion.Tests;
 
@@ -54,8 +55,33 @@ public sealed class AthenaRealtimeSessionTests
         Assert.Equal("low", session.GetProperty("reasoning").GetProperty("effort").GetString());
         Assert.Equal("test instructions", session.GetProperty("instructions").GetString());
         Assert.Equal("marin", session.GetProperty("audio").GetProperty("output").GetProperty("voice").GetString());
-        Assert.Equal("server_vad", session.GetProperty("audio").GetProperty("input").GetProperty("turn_detection").GetProperty("type").GetString());
+        var inputAudio = session.GetProperty("audio").GetProperty("input");
+        Assert.Equal("audio/pcm", inputAudio.GetProperty("format").GetProperty("type").GetString());
+        Assert.Equal(AthenaAudioInput.SampleRate, inputAudio.GetProperty("format").GetProperty("rate").GetInt32());
+        Assert.Equal("far_field", inputAudio.GetProperty("noise_reduction").GetProperty("type").GetString());
+        Assert.Equal("server_vad", inputAudio.GetProperty("turn_detection").GetProperty("type").GetString());
         Assert.Equal("auto", session.GetProperty("tool_choice").GetString());
+    }
+}
+
+public sealed class AthenaAudioInputTests
+{
+    [Fact]
+    public void CreatePcm16ProviderDownmixesAndResamplesToRealtimeInputFormat()
+    {
+        var sourceFormat = new WaveFormat(48000, 16, 2);
+        var sourceAudio = new byte[sourceFormat.AverageBytesPerSecond / 10];
+        using var sourceStream = new RawSourceWaveStream(sourceAudio, 0, sourceAudio.Length, sourceFormat);
+
+        var provider = AthenaAudioInput.CreatePcm16Provider(sourceStream);
+        var output = new byte[AthenaAudioInput.SampleRate * 2 / 5];
+        var bytesRead = provider.Read(output, 0, output.Length);
+
+        Assert.Equal(AthenaAudioInput.SampleRate, provider.WaveFormat.SampleRate);
+        Assert.Equal(1, provider.WaveFormat.Channels);
+        Assert.Equal(16, provider.WaveFormat.BitsPerSample);
+        Assert.True(bytesRead > 0);
+        Assert.Equal(0, bytesRead % 2);
     }
 }
 
