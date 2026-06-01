@@ -72,20 +72,20 @@ dotnet run --project .\AthenaCompanion.csproj
 Build the self-contained Windows installer locally from the repository root:
 
 ```powershell
-.\scripts\build-release.ps1 -Version 0.1.8
+.\scripts\build-release.ps1 -Version 0.1.9
 ```
 
 The installer is written to:
 
 ```text
-artifacts\installer\AthenaCompanionSetup-0.1.8.exe
+artifacts\installer\AthenaCompanionSetup-0.1.9.exe
 ```
 
 GitHub Actions also builds the installer when a `v*` tag is pushed:
 
 ```powershell
-git tag v0.1.8
-git push origin v0.1.8
+git tag v0.1.9
+git push origin v0.1.9
 ```
 
 The workflow uploads the installer artifact and attaches it to the GitHub release for the tag.
