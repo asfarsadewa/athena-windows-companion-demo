@@ -14,9 +14,10 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
     private readonly string _instructions;
     private readonly string _voice;
     private readonly AthenaToolExecutor _toolExecutor;
-    private readonly AthenaAudioInput _audioInput = new();
-    private readonly AthenaAudioOutput _audioOutput = new();
+    private readonly AthenaAudioInput _audioInput;
+    private readonly IAthenaAudioOutput _audioOutput;
     private readonly SemaphoreSlim _sendLock = new(1, 1);
+    private readonly object _responseSync = new();
 
     private ClientWebSocket? _socket;
     private CancellationTokenSource? _cts;
@@ -26,16 +27,33 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
     private readonly HashSet<string> _handledToolCallIds = [];
     private volatile bool _audioInputSuspended;
     private volatile bool _responseAudioActive;
+    private bool _responseDoneReceived;
+    private bool _playbackDrained;
+    private volatile bool _discardResponseAudioUntilDone;
     private bool _isSpeaking;
     private bool _started;
 
     public AthenaRealtimeSession(string apiKey, string instructions, string voice, AthenaToolExecutor toolExecutor)
+        : this(apiKey, instructions, voice, toolExecutor, new AthenaAudioInput(), new AthenaAudioOutput())
+    {
+    }
+
+    internal AthenaRealtimeSession(
+        string apiKey,
+        string instructions,
+        string voice,
+        AthenaToolExecutor toolExecutor,
+        AthenaAudioInput audioInput,
+        IAthenaAudioOutput audioOutput)
     {
         _apiKey = apiKey;
         _instructions = instructions;
         _voice = voice;
         _toolExecutor = toolExecutor;
+        _audioInput = audioInput;
+        _audioOutput = audioOutput;
         _audioInput.AudioAvailable += OnAudioAvailable;
+        _audioOutput.PlaybackDrained += OnPlaybackDrained;
     }
 
     public event EventHandler<string>? StatusChanged;
@@ -83,6 +101,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         _started = false;
         _audioInput.Stop();
         _audioOutput.Clear();
+        ResetResponsePlayback();
         _audioChannel?.Writer.TryComplete();
 
         if (_socket is { State: WebSocketState.Open })
@@ -121,6 +140,8 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopAsync();
+        _audioInput.AudioAvailable -= OnAudioAvailable;
+        _audioOutput.PlaybackDrained -= OnPlaybackDrained;
         _audioInput.Dispose();
         _audioOutput.Dispose();
         _sendLock.Dispose();
@@ -178,7 +199,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
 
     private void OnAudioAvailable(object? sender, byte[] audio)
     {
-        if (!_started || _audioInputSuspended || _responseAudioActive || _audioChannel is null)
+        if (!_started || _audioInputSuspended || _responseAudioActive || _discardResponseAudioUntilDone || _audioChannel is null)
         {
             return;
         }
@@ -258,7 +279,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         }
     }
 
-    private async Task HandleServerEventAsync(string json, CancellationToken cancellationToken)
+    internal async Task HandleServerEventAsync(string json, CancellationToken cancellationToken)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
@@ -272,25 +293,45 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         {
             case "session.created":
             case "session.updated":
-                StatusChanged?.Invoke(this, "Listening");
+                if (!_responseAudioActive)
+                {
+                    StatusChanged?.Invoke(this, "Listening");
+                }
+
                 break;
             case "input_audio_buffer.speech_started":
-                _responseAudioActive = false;
+                if (IsResponsePlaybackBlockingInput())
+                {
+                    break;
+                }
+
+                ResetResponsePlayback();
                 _audioOutput.Clear();
-                _isSpeaking = false;
                 StatusChanged?.Invoke(this, "Listening");
                 break;
             case "input_audio_buffer.speech_stopped":
-                _isSpeaking = false;
-                StatusChanged?.Invoke(this, "Thinking");
+                if (!_responseAudioActive)
+                {
+                    _isSpeaking = false;
+                    StatusChanged?.Invoke(this, "Thinking");
+                }
+
                 break;
             case "response.created":
-                _isSpeaking = false;
-                StatusChanged?.Invoke(this, "Thinking");
+                _discardResponseAudioUntilDone = false;
+                if (!_responseAudioActive)
+                {
+                    _isSpeaking = false;
+                    StatusChanged?.Invoke(this, "Thinking");
+                }
                 break;
             case "response.output_item.added":
-                _isSpeaking = false;
-                StatusChanged?.Invoke(this, RealtimeEventParser.IsFunctionCallEvent(root) ? "Using tool" : "Thinking");
+                if (!_responseAudioActive)
+                {
+                    _isSpeaking = false;
+                    StatusChanged?.Invoke(this, RealtimeEventParser.IsFunctionCallEvent(root) ? "Using tool" : "Thinking");
+                }
+
                 break;
             case "response.output_item.done":
                 if (RealtimeEventParser.TryReadFunctionCallFromItemEvent(root, out var itemCall))
@@ -308,22 +349,17 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
                 break;
             case "response.output_audio.delta":
             case "response.audio.delta":
-                if (!_isSpeaking)
-                {
-                    _isSpeaking = true;
-                    StatusChanged?.Invoke(this, "Speaking");
-                }
-
-                _responseAudioActive = true;
                 AddAudioDelta(root);
                 break;
+            case "response.output_audio.done":
+            case "response.audio.done":
+                FinishResponseAudio();
+                break;
             case "response.done":
-                _responseAudioActive = false;
-                _isSpeaking = false;
-                StatusChanged?.Invoke(this, "Listening");
+                HandleResponseDone(root);
                 break;
             case "error":
-                _responseAudioActive = false;
+                ResetResponsePlayback();
                 Error?.Invoke(this, RealtimeEventParser.ReadError(root));
                 break;
         }
@@ -351,7 +387,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         if (result.StopVoice)
         {
             _audioInputSuspended = true;
-            _responseAudioActive = false;
+            ResetResponsePlayback();
             _audioOutput.Clear();
             StatusChanged?.Invoke(this, "Music mode");
         }
@@ -391,7 +427,7 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
         }
 
         _audioInputSuspended = true;
-        _responseAudioActive = false;
+        ResetResponsePlayback();
         _audioChannel?.Writer.TryComplete();
         _cts?.Cancel();
         StatusChanged?.Invoke(this, "Disconnected");
@@ -414,7 +450,179 @@ internal sealed class AthenaRealtimeSession : IAsyncDisposable
             return;
         }
 
-        _audioOutput.AddPcm16(Convert.FromBase64String(delta));
+        if (_discardResponseAudioUntilDone)
+        {
+            return;
+        }
+
+        BeginResponseAudio();
+        if (!_audioOutput.AddPcm16(Convert.FromBase64String(delta)))
+        {
+            HandleAudioOutputOverflow();
+        }
+    }
+
+    private void BeginResponseAudio()
+    {
+        var notifySpeaking = false;
+        lock (_responseSync)
+        {
+            if (!_responseAudioActive)
+            {
+                _audioOutput.BeginResponse();
+                _responseAudioActive = true;
+                _responseDoneReceived = false;
+                _playbackDrained = false;
+            }
+
+            if (!_isSpeaking)
+            {
+                _isSpeaking = true;
+                notifySpeaking = true;
+            }
+        }
+
+        if (notifySpeaking)
+        {
+            StatusChanged?.Invoke(this, "Speaking");
+        }
+    }
+
+    private void FinishResponseAudio()
+    {
+        if (!_responseAudioActive)
+        {
+            return;
+        }
+
+        _audioOutput.FinishResponse();
+    }
+
+    private void HandleResponseDone(JsonElement root)
+    {
+        var status = ReadResponseStatus(root);
+        switch (status)
+        {
+            case "cancelled":
+                _audioOutput.Clear();
+                ResetResponsePlayback();
+                StatusChanged?.Invoke(this, "Listening");
+                return;
+            case "failed":
+                _audioOutput.Clear();
+                ResetResponsePlayback();
+                Error?.Invoke(this, ReadResponseFailure(root));
+                return;
+        }
+
+        if (_discardResponseAudioUntilDone)
+        {
+            ResetResponsePlayback();
+            StatusChanged?.Invoke(this, "Listening");
+            return;
+        }
+
+        var shouldListen = false;
+        lock (_responseSync)
+        {
+            _responseDoneReceived = true;
+            if (!_responseAudioActive || _playbackDrained)
+            {
+                ResetResponsePlaybackLocked();
+                shouldListen = true;
+            }
+        }
+
+        if (shouldListen)
+        {
+            StatusChanged?.Invoke(this, "Listening");
+            return;
+        }
+
+        _audioOutput.FinishResponse();
+    }
+
+    private void OnPlaybackDrained(object? sender, EventArgs e)
+    {
+        var shouldListen = false;
+        lock (_responseSync)
+        {
+            _playbackDrained = true;
+            if (_responseAudioActive && _responseDoneReceived)
+            {
+                ResetResponsePlaybackLocked();
+                shouldListen = true;
+            }
+        }
+
+        if (shouldListen)
+        {
+            StatusChanged?.Invoke(this, "Listening");
+        }
+    }
+
+    private bool IsResponsePlaybackBlockingInput()
+    {
+        lock (_responseSync)
+        {
+            return _responseAudioActive || _discardResponseAudioUntilDone || _audioOutput.QueuedDuration > TimeSpan.Zero;
+        }
+    }
+
+    private void HandleAudioOutputOverflow()
+    {
+        var stats = _audioOutput.SnapshotStats();
+        _audioOutput.Clear();
+        lock (_responseSync)
+        {
+            ResetResponsePlaybackLocked();
+            _discardResponseAudioUntilDone = true;
+        }
+
+        Error?.Invoke(
+            this,
+            $"Athena response audio exceeded the {stats.MaxQueuedDuration.TotalSeconds:F0}s local playback queue and was stopped to avoid corrupted speech.");
+    }
+
+    private void ResetResponsePlayback()
+    {
+        lock (_responseSync)
+        {
+            ResetResponsePlaybackLocked();
+        }
+    }
+
+    private void ResetResponsePlaybackLocked()
+    {
+        _responseAudioActive = false;
+        _responseDoneReceived = false;
+        _playbackDrained = false;
+        _discardResponseAudioUntilDone = false;
+        _isSpeaking = false;
+    }
+
+    private static string? ReadResponseStatus(JsonElement root)
+    {
+        if (root.TryGetProperty("response", out var response) &&
+            response.TryGetProperty("status", out var statusElement))
+        {
+            return statusElement.GetString();
+        }
+
+        return null;
+    }
+
+    private static string ReadResponseFailure(JsonElement root)
+    {
+        if (root.TryGetProperty("response", out var response) &&
+            response.TryGetProperty("status_details", out var statusDetails) &&
+            statusDetails.TryGetProperty("error", out var error) &&
+            error.TryGetProperty("message", out var messageElement))
+        {
+            return messageElement.GetString() ?? "Realtime response failed.";
+        }
+
+        return "Realtime response failed.";
     }
 
     private async Task SendJsonAsync(object payload, CancellationToken cancellationToken)

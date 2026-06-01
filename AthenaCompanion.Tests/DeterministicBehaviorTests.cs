@@ -65,6 +65,98 @@ public sealed class AthenaRealtimeSessionTests
         Assert.Equal("marin", outputAudio.GetProperty("voice").GetString());
         Assert.Equal("auto", session.GetProperty("tool_choice").GetString());
     }
+
+    [Fact]
+    public async Task ResponseDoneBeforePlaybackDrainKeepsSpeaking()
+    {
+        var audioOutput = new FakeAudioOutput();
+        var session = CreateRealtimeSession(audioOutput);
+        var statuses = new List<string>();
+        session.StatusChanged += (_, status) => statuses.Add(status);
+
+        await session.HandleServerEventAsync(AudioDeltaJson([1, 2]), CancellationToken.None);
+        await session.HandleServerEventAsync("""{"type":"response.done","response":{"status":"completed"}}""", CancellationToken.None);
+
+        Assert.Equal("Speaking", statuses.Last());
+        Assert.Equal(1, audioOutput.FinishResponseCount);
+
+        audioOutput.Drain();
+
+        Assert.Equal("Listening", statuses.Last());
+    }
+
+    [Fact]
+    public async Task OutputAudioDoneAloneDoesNotReturnToListening()
+    {
+        var audioOutput = new FakeAudioOutput();
+        var session = CreateRealtimeSession(audioOutput);
+        var statuses = new List<string>();
+        session.StatusChanged += (_, status) => statuses.Add(status);
+
+        await session.HandleServerEventAsync(AudioDeltaJson([1, 2]), CancellationToken.None);
+        statuses.Clear();
+        await session.HandleServerEventAsync("""{"type":"response.output_audio.done"}""", CancellationToken.None);
+
+        Assert.Equal(1, audioOutput.FinishResponseCount);
+        Assert.DoesNotContain("Listening", statuses);
+    }
+
+    [Fact]
+    public async Task SpeechStartedDuringPlaybackDoesNotClearResponseTail()
+    {
+        var audioOutput = new FakeAudioOutput();
+        var session = CreateRealtimeSession(audioOutput);
+
+        await session.HandleServerEventAsync(AudioDeltaJson([1, 2]), CancellationToken.None);
+        await session.HandleServerEventAsync("""{"type":"input_audio_buffer.speech_started"}""", CancellationToken.None);
+
+        Assert.Equal(0, audioOutput.ClearCount);
+        Assert.Equal(1, audioOutput.BeginResponseCount);
+    }
+
+    [Fact]
+    public async Task CancelledResponseClearsOutputAndReturnsToListening()
+    {
+        var audioOutput = new FakeAudioOutput();
+        var session = CreateRealtimeSession(audioOutput);
+        var statuses = new List<string>();
+        session.StatusChanged += (_, status) => statuses.Add(status);
+
+        await session.HandleServerEventAsync(AudioDeltaJson([1, 2]), CancellationToken.None);
+        await session.HandleServerEventAsync("""{"type":"response.done","response":{"status":"cancelled"}}""", CancellationToken.None);
+
+        Assert.Equal(1, audioOutput.ClearCount);
+        Assert.Equal("Listening", statuses.Last());
+    }
+
+    [Fact]
+    public async Task FailedResponseClearsOutputAndRaisesError()
+    {
+        var audioOutput = new FakeAudioOutput();
+        var session = CreateRealtimeSession(audioOutput);
+        var errors = new List<string>();
+        session.Error += (_, error) => errors.Add(error);
+
+        await session.HandleServerEventAsync(AudioDeltaJson([1, 2]), CancellationToken.None);
+        await session.HandleServerEventAsync(
+            """{"type":"response.done","response":{"status":"failed","status_details":{"error":{"message":"audio failed"}}}}""",
+            CancellationToken.None);
+
+        Assert.Equal(1, audioOutput.ClearCount);
+        Assert.Equal("audio failed", errors.Single());
+    }
+
+    private static AthenaRealtimeSession CreateRealtimeSession(IAthenaAudioOutput audioOutput) =>
+        new(
+            "key",
+            "instructions",
+            "marin",
+            new AthenaToolExecutor(() => "key", _ => { }, _ => { }),
+            new AthenaAudioInput(),
+            audioOutput);
+
+    private static string AudioDeltaJson(byte[] audio) =>
+        $$"""{"type":"response.output_audio.delta","delta":"{{Convert.ToBase64String(audio)}}"}""";
 }
 
 public sealed class AthenaAudioInputTests
@@ -91,22 +183,78 @@ public sealed class AthenaAudioInputTests
 public sealed class AthenaAudioOutputTests
 {
     [Fact]
-    public void AddAlignedPcm16CarriesOddByteAcrossDeltas()
+    public void QueuedProviderPreservesMoreThanEightSecondsOfPcm()
     {
-        var buffer = new BufferedWaveProvider(new WaveFormat(AthenaAudioInput.SampleRate, 16, 1))
-        {
-            ReadFully = false
-        };
+        var provider = CreateResponseQueue();
+        var audio = Enumerable.Range(0, AthenaAudioInput.SampleRate * 2 * 9)
+            .Select(index => (byte)(index % 251))
+            .ToArray();
 
-        var pending = AthenaAudioOutput.AddAlignedPcm16(buffer, [1, 2, 3], null);
-        pending = AthenaAudioOutput.AddAlignedPcm16(buffer, [4, 5], pending);
-        pending = AthenaAudioOutput.AddAlignedPcm16(buffer, [6], pending);
+        provider.BeginResponse();
+        var accepted = provider.AddPcm16(audio);
+        var actual = new byte[audio.Length];
+        var read = provider.Read(actual, 0, actual.Length);
+
+        Assert.True(accepted);
+        Assert.Equal(audio.Length, read);
+        Assert.Equal(audio, actual);
+        Assert.InRange(
+            Math.Abs((provider.SnapshotStats().MaxQueuedDuration - TimeSpan.FromSeconds(9)).TotalMilliseconds),
+            0,
+            1);
+    }
+
+    [Fact]
+    public void QueuedProviderCarriesOddByteAcrossDeltas()
+    {
+        var provider = CreateResponseQueue();
+        provider.BeginResponse();
+
+        Assert.True(provider.AddPcm16([1, 2, 3]));
+        Assert.True(provider.AddPcm16([4, 5]));
+        Assert.True(provider.AddPcm16([6]));
         var actual = new byte[6];
-        var read = buffer.Read(actual, 0, actual.Length);
+        var read = provider.Read(actual, 0, actual.Length);
 
-        Assert.Null(pending);
         Assert.Equal(6, read);
         Assert.Equal([1, 2, 3, 4, 5, 6], actual);
+    }
+
+    [Fact]
+    public void QueuedProviderZeroFillsUnderrunWithoutCorruptingLaterAudio()
+    {
+        var provider = CreateResponseQueue();
+        provider.BeginResponse();
+        Assert.True(provider.AddPcm16([1, 2]));
+
+        var firstRead = new byte[4];
+        provider.Read(firstRead, 0, firstRead.Length);
+        Assert.Equal([1, 2, 0, 0], firstRead);
+
+        Assert.True(provider.AddPcm16([3, 4]));
+        var secondRead = new byte[2];
+        provider.Read(secondRead, 0, secondRead.Length);
+
+        Assert.Equal([3, 4], secondRead);
+        Assert.Equal(1, provider.SnapshotStats().UnderrunCount);
+    }
+
+    [Fact]
+    public void QueuedProviderRejectsOnlyWhenMaxDurationIsExceeded()
+    {
+        var provider = new QueuedPcm16WaveProvider(
+            new WaveFormat(AthenaAudioInput.SampleRate, 16, 1),
+            TimeSpan.FromMilliseconds(10),
+            TimeSpan.FromMilliseconds(1));
+        var maxAudio = new byte[AthenaAudioInput.SampleRate * 2 / 100];
+
+        provider.BeginResponse();
+        Assert.True(provider.AddPcm16(maxAudio));
+        Assert.False(provider.AddPcm16([1, 2]));
+
+        var stats = provider.SnapshotStats();
+        Assert.Equal(1, stats.RejectedOverflowCount);
+        Assert.Equal(TimeSpan.Zero, stats.QueuedDuration);
     }
 
     [Fact]
@@ -123,6 +271,12 @@ public sealed class AthenaAudioOutputTests
         Assert.Equal(2, provider.WaveFormat.Channels);
         Assert.Equal(WaveFormatEncoding.IeeeFloat, provider.WaveFormat.Encoding);
     }
+
+    private static QueuedPcm16WaveProvider CreateResponseQueue() =>
+        new(
+            new WaveFormat(AthenaAudioInput.SampleRate, 16, 1),
+            TimeSpan.FromSeconds(120),
+            TimeSpan.FromMilliseconds(150));
 }
 
 public sealed class AthenaSettingsTests
@@ -670,6 +824,62 @@ public sealed class RealtimeEventParserTests
         using var document = JsonDocument.Parse("""{"error":{}}""");
 
         Assert.Equal("Realtime API error.", RealtimeEventParser.ReadError(document.RootElement));
+    }
+}
+
+internal sealed class FakeAudioOutput : IAthenaAudioOutput
+{
+    public event EventHandler? PlaybackDrained;
+
+    public TimeSpan QueuedDuration { get; private set; } = TimeSpan.Zero;
+
+    public int BeginResponseCount { get; private set; }
+
+    public int FinishResponseCount { get; private set; }
+
+    public int ClearCount { get; private set; }
+
+    public bool AcceptAudio { get; set; } = true;
+
+    public void Start()
+    {
+    }
+
+    public void BeginResponse()
+    {
+        BeginResponseCount++;
+        QueuedDuration = TimeSpan.FromSeconds(1);
+    }
+
+    public void FinishResponse()
+    {
+        FinishResponseCount++;
+    }
+
+    public bool AddPcm16(byte[] audio) => AcceptAudio;
+
+    public void Clear()
+    {
+        ClearCount++;
+        QueuedDuration = TimeSpan.Zero;
+    }
+
+    public AthenaAudioOutputStats SnapshotStats() =>
+        new(
+            TotalBytesAccepted: 0,
+            QueuedDuration,
+            MaxQueuedDuration: TimeSpan.FromSeconds(120),
+            UnderrunCount: 0,
+            RejectedOverflowCount: AcceptAudio ? 0 : 1);
+
+    public void Drain()
+    {
+        QueuedDuration = TimeSpan.Zero;
+        PlaybackDrained?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void Dispose()
+    {
     }
 }
 
