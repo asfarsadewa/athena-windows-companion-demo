@@ -291,29 +291,40 @@ internal static class MusicLibrary
         ".m4a"
     };
 
-    public static MusicLibrarySnapshot Load(string directoryPath)
+    public static MusicLibrarySnapshot Load(string directoryPath, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         Directory.CreateDirectory(directoryPath);
 
-        var tracks = EnumerateFilesSafely(directoryPath)
-            .Where(path => SupportedExtensions.Contains(Path.GetExtension(path)))
-            .Select(path => new MusicTrack(
+        var tracks = new List<MusicTrack>();
+        foreach (var path in EnumerateFilesSafely(directoryPath, cancellationToken))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!SupportedExtensions.Contains(Path.GetExtension(path)))
+            {
+                continue;
+            }
+
+            tracks.Add(new MusicTrack(
                 path,
                 Path.GetFileNameWithoutExtension(path),
-                Path.GetRelativePath(directoryPath, path)))
-            .OrderBy(track => track.RelativePath, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+                Path.GetRelativePath(directoryPath, path)));
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        tracks.Sort((left, right) => StringComparer.OrdinalIgnoreCase.Compare(left.RelativePath, right.RelativePath));
 
         return new MusicLibrarySnapshot(directoryPath, tracks);
     }
 
-    private static IEnumerable<string> EnumerateFilesSafely(string root)
+    private static IEnumerable<string> EnumerateFilesSafely(string root, CancellationToken cancellationToken)
     {
         var pending = new Stack<string>();
         pending.Push(root);
 
         while (pending.Count > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var directory = pending.Pop();
             string[] files;
             try
@@ -327,6 +338,7 @@ internal static class MusicLibrary
 
             foreach (var file in files)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 yield return file;
             }
 
@@ -342,6 +354,7 @@ internal static class MusicLibrary
 
             foreach (var child in directories)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 pending.Push(child);
             }
         }

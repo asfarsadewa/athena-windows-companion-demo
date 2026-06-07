@@ -47,6 +47,43 @@ public sealed class MusicLibraryTests
     }
 
     [Fact]
+    public void LoadHonorsCancellationBeforeScanning()
+    {
+        using var temp = new TempDirectory();
+        File.WriteAllText(Path.Combine(temp.Path, "track.mp3"), "not real audio");
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+
+        Assert.Throws<OperationCanceledException>(() => MusicLibrary.Load(temp.Path, cancellation.Token));
+    }
+
+    [Fact]
+    public void LoadHandlesLargeNestedLibraryAndKeepsRelativeSort()
+    {
+        using var temp = new TempDirectory();
+        for (var album = 12; album >= 1; album--)
+        {
+            for (var disc = 4; disc >= 1; disc--)
+            {
+                var directory = Path.Combine(temp.Path, $"Album {album:00}", $"Disc {disc:00}");
+                Directory.CreateDirectory(directory);
+                for (var track = 25; track >= 1; track--)
+                {
+                    File.WriteAllText(Path.Combine(directory, $"Track {track:000}.mp3"), "not real audio");
+                }
+            }
+        }
+
+        var snapshot = MusicLibrary.Load(temp.Path);
+        var relativePaths = snapshot.Tracks.Select(track => track.RelativePath).ToArray();
+
+        Assert.Equal(1200, relativePaths.Length);
+        Assert.Equal(Path.Combine("Album 01", "Disc 01", "Track 001.mp3"), relativePaths[0]);
+        Assert.Equal(Path.Combine("Album 12", "Disc 04", "Track 025.mp3"), relativePaths[^1]);
+        Assert.Equal(relativePaths.OrderBy(path => path, StringComparer.OrdinalIgnoreCase), relativePaths);
+    }
+
+    [Fact]
     public void EmptyMessageTellsUserWhereToAddMusic()
     {
         using var temp = new TempDirectory();

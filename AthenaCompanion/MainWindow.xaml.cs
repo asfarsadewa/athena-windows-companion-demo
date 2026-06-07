@@ -526,7 +526,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        var musicWindow = new MusicPlayerWindow(_settings.MusicDirectory)
+        var musicWindow = new MusicPlayerWindow(_settings.MusicDirectory, request)
         {
             Owner = this
         };
@@ -535,7 +535,6 @@ public partial class MainWindow : Window
         PositionChildWindow(musicWindow);
         _musicPlayerWindow = musicWindow;
         musicWindow.Show();
-        musicWindow.ApplyRequest(request);
         musicWindow.Activate();
     }
 
